@@ -1,12 +1,15 @@
 """
 Module đọc GeoJSON Việt Nam (2 cấp: tỉnh/thành + phường/xã).
-Tối ưu: Cache pickle + STRtree spatial index.
+Tự động tải GeoJSON từ GitHub Releases khi chạy trên Streamlit Cloud.
 """
 
 import json
+import os
 import pickle
+import time
 import unicodedata
 import hashlib
+import urllib.request
 from pathlib import Path
 from typing import Optional, Tuple, List, Dict, Any
 from functools import lru_cache
@@ -14,13 +17,45 @@ from functools import lru_cache
 from shapely.geometry import shape, Point
 from shapely.strtree import STRtree
 
-# ============================================================
-# ĐƯỜNG DẪN
-# ============================================================
-GEOJSON_DIR = Path(__file__).parent / "geojson"
-CACHE_DIR = Path(__file__).parent / "data" / "geojson_cache"
-CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
+# ============================================================
+# CẤU HÌNH ĐƯỜNG DẪN (hỗ trợ env var cho Streamlit Cloud)
+# ============================================================
+GEOJSON_DIR = Path(os.getenv("GEOJSON_DIR", Path(__file__).parent / "geojson"))
+CACHE_DIR = Path(os.getenv("GEOJSON_CACHE_DIR", Path(__file__).parent / "data" / "geojson_cache"))
+CACHE_DIR.mkdir(parents=True, exist_ok=True)
+GEOJSON_DIR.mkdir(parents=True, exist_ok=True)
+
+
+# ============================================================
+# URL TẢI GEOJSON (từ GitHub Releases)
+# ------------------------------------------------------------
+# ⚠️ THAY 2 URL DƯỚI ĐÂY bằng URL thật của repo bạn
+# (lấy từ bước 1.4)
+# ============================================================
+GITHUB_RELEASE_BASE = os.getenv(
+    "GITHUB_RELEASE_BASE",
+    "https://github.com/nghiakttvst/weathernext-app/releases/download/v1.0-geojson",
+)
+
+GEOJSON_URLS = {
+    "vn_provinces.geojson": os.getenv(
+        "GEOJSON_PROVINCES_URL",
+        f"{GITHUB_RELEASE_BASE}/vn_provinces.geojson",
+    ),
+    "vn_Commune_Ward.geojson": os.getenv(
+        "GEOJSON_COMMUNE_URL",
+        f"{GITHUB_RELEASE_BASE}/vn_Commune_Ward.geojson",
+    ),
+}
+
+# Timeout khi tải (giây) — file lớn nên để cao
+DOWNLOAD_TIMEOUT = 300
+
+
+# ============================================================
+# TÊN FILE ỨNG VIÊN
+# ============================================================
 PROVINCE_CANDIDATES = [
     "vn_provinces.geojson", "vn_province.geojson",
     "vn_provinces.json", "provinces.geojson",
@@ -46,11 +81,88 @@ def _find_file(candidates: List[str]) -> Optional[Path]:
 
 
 def get_province_file() -> Optional[Path]:
+    _ensure_geojson_downloaded()
     return _find_file(PROVINCE_CANDIDATES)
 
 
 def get_commune_file() -> Optional[Path]:
+    _ensure_geojson_downloaded()
     return _find_file(COMMUNE_CANDIDATES)
+
+
+# ============================================================
+# TỰ ĐỘNG TẢI GEOJSON TỪ GITHUB RELEASES
+# ============================================================
+_download_attempted = {"province": False, "commune": False}
+
+
+def _ensure_geojson_downloaded():
+    """
+    Kiểm tra và tải GeoJSON từ GitHub Releases nếu chưa có.
+    Chỉ tải 1 lần cho mỗi file trong 1 tiến trình.
+    """
+    # File cấp tỉnh
+    if not _find_file(PROVINCE_CANDIDATES) and not _download_attempted["province"]:
+        _download_attempted["province"] = True
+        _download_geojson(
+            "vn_provinces.geojson",
+            GEOJSON_URLS["vn_provinces.geojson"],
+        )
+
+    # File cấp phường/xã
+    if not _find_file(COMMUNE_CANDIDATES) and not _download_attempted["commune"]:
+        _download_attempted["commune"] = True
+        _download_geojson(
+            "vn_Commune_Ward.geojson",
+            GEOJSON_URLS["vn_Commune_Ward.geojson"],
+        )
+
+
+def _download_geojson(filename: str, url: str, max_retries: int = 3):
+    """Tải file GeoJSON từ URL với retry."""
+    target = GEOJSON_DIR / filename
+    target.parent.mkdir(parents=True, exist_ok=True)
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            print(f"[GEOJSON] ⬇️ Đang tải {filename} (lần {attempt})…")
+            print(f"[GEOJSON]    URL: {url}")
+
+            req = urllib.request.Request(
+                url,
+                headers={"User-Agent": "WeatherNext-App/1.0"},
+            )
+            with urllib.request.urlopen(req, timeout=DOWNLOAD_TIMEOUT) as resp:
+                total = int(resp.headers.get("Content-Length", 0))
+                chunk_size = 1024 * 1024  # 1 MB
+                downloaded = 0
+
+                with open(target, "wb") as f:
+                    while True:
+                        chunk = resp.read(chunk_size)
+                        if not chunk:
+                            break
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        if total > 0:
+                            pct = downloaded * 100 / total
+                            if downloaded % (10 * chunk_size) == 0:
+                                print(f"[GEOJSON]    Đã tải {pct:.1f}% "
+                                      f"({downloaded/1e6:.1f}/{total/1e6:.1f} MB)")
+
+            size_mb = target.stat().st_size / 1e6
+            print(f"[GEOJSON] ✅ Đã tải {filename}: {size_mb:.2f} MB")
+            return True
+
+        except Exception as e:
+            print(f"[GEOJSON] ❌ Lỗi tải {filename} (lần {attempt}): {e}")
+            if target.exists():
+                target.unlink()
+            if attempt < max_retries:
+                time.sleep(3)
+
+    print(f"[GEOJSON] ❌ Thất bại tải {filename} sau {max_retries} lần.")
+    return False
 
 
 # ============================================================
@@ -431,6 +543,7 @@ def list_communes(province: Optional[str] = None) -> List[str]:
 # TRẠNG THÁI
 # ============================================================
 def geojson_status() -> Dict[str, Any]:
+    _ensure_geojson_downloaded()
     pf = get_province_file()
     cf = get_commune_file()
     status = {
