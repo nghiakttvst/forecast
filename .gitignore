@@ -1,0 +1,23 @@
+# GeoJSON — tải từ GitHub Releases
+geojson/
+*.geojson
+*.pkl
+
+# Cache & data
+data/
+__pycache__/
+*.pyc
+*.pyo
+*.db
+*.sqlite
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets
+.streamlit/secrets.toml
