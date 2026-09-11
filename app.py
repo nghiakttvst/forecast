@@ -1,6 +1,7 @@
 """
 Ứng dụng Dự báo thời tiết WeatherNext — Đài KTTV TP. Cần Thơ
 Bao gồm: đăng nhập, thống kê, admin panel.
+Chạy: streamlit run app.py
 """
 
 import io
@@ -36,6 +37,7 @@ from auth import ensure_admin_exists, login_user, register_user, change_password
 from analytics import log_visit
 from admin import render_admin_panel
 
+
 BAR_MAX_MODELS = 3
 
 
@@ -51,7 +53,7 @@ st.set_page_config(
 
 
 # ============================================================
-# CSS — bao gồm ẩn toolbar Streamlit Cloud
+# CSS — Ẩn toolbar + cố định sidebar
 # ============================================================
 st.markdown("""
 <style>
@@ -75,19 +77,62 @@ st.markdown("""
                      'Material Icons' !important;
     }
 
-    /* ---------- ẨN TOOLBAR STREAMLIT CLOUD ---------- */
+    /* ============================================
+       ẨN TOÀN BỘ TOOLBAR STREAMLIT CLOUD
+       ============================================ */
     [data-testid="stToolbar"],
-    [data-testid="stStatusWidget"],
     [data-testid="stHeader"],
+    [data-testid="stStatusWidget"],
+    [data-testid="stAppDeployButton"],
+    [data-testid="stManageAppButton"],
+    [data-testid="stAppToolbar"],
+    [data-testid="stDecoration"],
+    .stStatusWidget,
     .stAppDeployButton,
     .stAppToolbar,
+    .stDeployButton,
+    .manage-app-button,
+    #MainMenu,
+    header[data-testid="stHeader"],
     button[kind="header"],
-    .stStatusWidget {
+    button[kind="headerNoPadding"] {
         display: none !important;
         visibility: hidden !important;
         height: 0 !important;
+        width: 0 !important;
+        overflow: hidden !important;
+        pointer-events: none !important;
     }
 
+    /* Ẩn iframe badge của Streamlit Cloud */
+    iframe[title="streamlit_cloud"],
+    iframe[src*="streamlit.io"] {
+        display: none !important;
+        visibility: hidden !important;
+    }
+
+    /* ============================================
+       CỐ ĐỊNH SIDEBAR — Không cho thu gọn
+       ============================================ */
+    [data-testid="stSidebarCollapseButton"],
+    [data-testid="stSidebarCollapsedControl"],
+    [data-testid="collapsedControl"] {
+        display: none !important;
+        visibility: hidden !important;
+    }
+
+    section[data-testid="stSidebar"] {
+        transform: translateX(0) !important;
+        margin-left: 0 !important;
+        min-width: 300px !important;
+        width: 300px !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+    }
+
+    /* ============================================
+       NỀN + LAYOUT CHÍNH
+       ============================================ */
     .stApp {
         background: linear-gradient(180deg, #eaf4fb 0%, #f4faff 45%, #fffaf0 100%);
         background-attachment: fixed;
@@ -98,7 +143,9 @@ st.markdown("""
         padding-bottom: 1rem !important;
     }
 
-    /* ---------- BANNER ---------- */
+    /* ============================================
+       BANNER
+       ============================================ */
     .header-banner {
         position: relative;
         overflow: hidden;
@@ -145,7 +192,26 @@ st.markdown("""
     }
     .stButton > button:hover { transform: translateY(-1px); }
 
-    /* ---------- FOOTER ---------- */
+    /* ============================================
+       USER INFO HEADER
+       ============================================ */
+    .user-info-box {
+        text-align: right;
+        font-size: 0.9rem;
+        padding-top: 0.3rem;
+        line-height: 1.6;
+    }
+    .user-info-box strong {
+        color: #0e4a7b;
+    }
+    .fav-count {
+        font-size: 0.85rem;
+        color: #1976d2;
+    }
+
+    /* ============================================
+       FOOTER
+       ============================================ */
     .footer {
         margin-top: 40px; padding: 20px 24px;
         background: linear-gradient(90deg,
@@ -171,7 +237,7 @@ st.markdown("""
 
 
 # ============================================================
-# SESSION STATE & AUTH
+# SESSION STATE & AUTH INIT
 # ============================================================
 ensure_admin_exists()
 
@@ -197,6 +263,8 @@ if "saved_model_keys" not in st.session_state:
     st.session_state["saved_model_keys"] = None
 if "saved_address" not in st.session_state:
     st.session_state["saved_address"] = ""
+if "show_admin" not in st.session_state:
+    st.session_state["show_admin"] = False
 
 
 # ============================================================
@@ -229,7 +297,9 @@ def render_login():
             with st.form("form_login"):
                 username = st.text_input("Tên đăng nhập", key="login_user")
                 password = st.text_input("Mật khẩu", type="password", key="login_pwd")
-                submit = st.form_submit_button("🔓 Đăng nhập", use_container_width=True)
+                submit = st.form_submit_button(
+                    "🔓 Đăng nhập", use_container_width=True
+                )
 
                 if submit:
                     result = login_user(username, password)
@@ -256,7 +326,9 @@ def render_login():
                 rp2 = st.text_input("Nhập lại mật khẩu *", type="password", key="reg_pwd2")
                 re = st.text_input("Email", key="reg_email")
                 rf = st.text_input("Họ và tên", key="reg_fullname")
-                rsub = st.form_submit_button("✅ Đăng ký", use_container_width=True)
+                rsub = st.form_submit_button(
+                    "✅ Đăng ký", use_container_width=True
+                )
 
                 if rsub:
                     if rp != rp2:
@@ -311,7 +383,7 @@ st.markdown("""
 
 
 # ============================================================
-# HEADER + USER INFO
+# HEADER: TIÊU ĐỀ + USER INFO + ĐĂNG XUẤT
 # ============================================================
 title_col, user_col = st.columns([3, 2])
 
@@ -319,24 +391,33 @@ with title_col:
     st.title("🌦️ Dự báo thời tiết WeatherNext đa mô hình")
 
 with user_col:
-    st.markdown(
-        f"<div style='text-align:right; font-size:0.9rem;'>"
-        f"👤 <strong>{current_user.get('full_name') or current_user['username']}</strong>"
-        f" &nbsp;|&nbsp; Vai trò: <strong>{current_user['role']}</strong></div>",
-        unsafe_allow_html=True,
-    )
+    # Dòng 1: Tên + Vai trò (trái) | Nút Đăng xuất (phải) — CÙNG HÀNG
+    info_col, logout_col = st.columns([3, 1])
 
+    with info_col:
+        st.markdown(
+            f"<div class='user-info-box'>"
+            f"👤 <strong>{current_user.get('full_name') or current_user['username']}</strong>"
+            f" &nbsp;|&nbsp; Vai trò: <strong>{current_user['role']}</strong>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+
+    with logout_col:
+        if st.button("🚪 Đăng xuất", key="btn_logout", use_container_width=True):
+            st.session_state["user"] = None
+            st.session_state["has_results"] = False
+            st.session_state["show_admin"] = False
+            st.rerun()
+
+    # Dòng 2: Vị trí đã ghim
     favs = load_favorites() if callable(load_favorites) else []
     st.markdown(
-        f"<div style='text-align:right; font-size:0.85rem; margin-top:6px;'>"
-        f"⭐ Vị trí đã ghim: <strong>{len(favs)}</strong></div>",
+        f"<div class='user-info-box fav-count'>"
+        f"⭐ Vị trí đã ghim: <strong>{len(favs)}</strong>"
+        f"</div>",
         unsafe_allow_html=True,
     )
-
-    if st.button("🚪 Đăng xuất", key="btn_logout"):
-        st.session_state["user"] = None
-        st.session_state["has_results"] = False
-        st.rerun()
 
 st.divider()
 
@@ -405,7 +486,7 @@ with st.sidebar:
 
 
 # ============================================================
-# ADMIN PANEL (nếu được bật)
+# ADMIN PANEL
 # ============================================================
 if st.session_state.get("show_admin") and current_user["role"] == "admin":
     render_admin_panel(current_user)
@@ -417,7 +498,7 @@ if st.session_state.get("show_admin") and current_user["role"] == "admin":
 
 
 # ============================================================
-# XỬ LÝ CHÍNH — giữ nguyên như bản trước
+# XỬ LÝ CHÍNH
 # ============================================================
 trigger_run = run_btn or st.session_state.get("pending_run")
 
@@ -500,7 +581,10 @@ if st.session_state.get("has_results"):
             if st.button("⭐ Ghim vị trí này", key="pin_btn"):
                 try:
                     saved = save_favorite(address or full_name, full_name, lat, lon)
-                    st.success(f"⭐ Đã ghim: **{full_name}**") if saved else st.info("Đã có.")
+                    if saved:
+                        st.success(f"⭐ Đã ghim: **{full_name}**")
+                    else:
+                        st.info("Đã có trong danh sách.")
                     st.rerun()
                 except Exception as e:
                     st.error(f"Lỗi ghim: {e}")
@@ -513,12 +597,16 @@ if st.session_state.get("has_results"):
         "💾 Lịch sử",
     ])
 
-    # TAB 1
+    # ============================================================
+    # TAB 1: BIỂU ĐỒ
+    # ============================================================
     with tab1:
         st.subheader("📈 Dự báo nhiệt độ và mưa")
         fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
                             subplot_titles=("Nhiệt độ 2m (°C)", "Mưa 1h (mm)"),
                             vertical_spacing=0.12)
+
+        # Nhiệt độ
         for mk, ens_df in temp_ensembles.items():
             stats = compute_ensemble_stats(ens_df)
             if stats.empty:
@@ -526,17 +614,21 @@ if st.session_state.get("has_results"):
             color = ALL_MODELS[mk]["color"]
             label = ALL_MODELS[mk]["label"]
             rgb = tuple(int(color.lstrip("#")[i:i+2], 16) for i in (0, 2, 4))
-            fig.add_trace(go.Scatter(x=stats.index, y=stats["p90"], mode="lines",
-                                     line=dict(width=0), showlegend=False,
-                                     hoverinfo="skip"), row=1, col=1)
-            fig.add_trace(go.Scatter(x=stats.index, y=stats["p10"], mode="lines",
-                                     line=dict(width=0), fill="tonexty",
+            fig.add_trace(go.Scatter(x=stats.index, y=stats["p90"],
+                                     mode="lines", line=dict(width=0),
+                                     showlegend=False, hoverinfo="skip"),
+                          row=1, col=1)
+            fig.add_trace(go.Scatter(x=stats.index, y=stats["p10"],
+                                     mode="lines", line=dict(width=0),
+                                     fill="tonexty",
                                      fillcolor=f"rgba({rgb[0]},{rgb[1]},{rgb[2]},0.15)",
                                      name=f"{label} (10–90%)"), row=1, col=1)
-            fig.add_trace(go.Scatter(x=stats.index, y=stats["mean"], mode="lines",
+            fig.add_trace(go.Scatter(x=stats.index, y=stats["mean"],
+                                     mode="lines",
                                      line=dict(color=color, width=2),
                                      name=f"{label} (TB)"), row=1, col=1)
 
+        # Mưa
         n_p = len(precip_ensembles)
         use_bars = n_p <= BAR_MAX_MODELS
         for mk, ens_df in precip_ensembles.items():
@@ -565,53 +657,185 @@ if st.session_state.get("has_results"):
                           margin=dict(l=40, r=20, t=80, b=40))
         st.plotly_chart(fig, use_container_width=True)
 
+        # Tóm tắt
         st.subheader(f"📌 Tóm tắt dự báo {days} ngày tới")
+        st.caption(f"Thống kê dựa trên **trung bình ensemble** – "
+                   f"khoảng **{days * 24} giờ** dự báo")
+
         c1, c2, c3, c4 = st.columns(4)
         if temp_ensembles:
             fm = list(temp_ensembles.keys())[0]
             stats = compute_ensemble_stats(temp_ensembles[fm])
             t_max = float(stats["mean"].max())
+            time_tmax = stats["mean"].idxmax()
             t_min = float(stats["mean"].min())
-            c1.metric("🌡️ T cao nhất", f"{t_max:.1f} °C")
-            c2.metric("❄️ T thấp nhất", f"{t_min:.1f} °C")
+            time_tmin = stats["mean"].idxmin()
+
+            c1.metric("🌡️ T cao nhất", f"{t_max:.1f} °C",
+                      help=f"Đạt lúc {time_tmax.strftime('%d/%m/%Y %H:%M')}")
+            c2.metric("❄️ T thấp nhất", f"{t_min:.1f} °C",
+                      help=f"Đạt lúc {time_tmin.strftime('%d/%m/%Y %H:%M')}")
+
         if precip_ensembles:
             fm = list(precip_ensembles.keys())[0]
             stats = compute_ensemble_stats(precip_ensembles[fm])
-            c3.metric("💧 Tổng mưa", f"{float(stats['mean'].sum()):.1f} mm")
-            c4.metric("☔ Đỉnh mưa 1h", f"{float(stats['mean'].max()):.1f} mm")
+            total_rain = float(stats["mean"].sum())
+            peak_rain = float(stats["mean"].max())
+            time_peak = stats["mean"].idxmax()
 
-    # TAB 2
+            c3.metric("💧 Tổng mưa", f"{total_rain:.1f} mm",
+                      help=f"Tổng cộng dồn {days} ngày")
+            c4.metric("☔ Đỉnh mưa 1h", f"{peak_rain:.1f} mm",
+                      help=f"Đạt lúc {time_peak.strftime('%d/%m/%Y %H:%M')}")
+
+    # ============================================================
+    # TAB 2: SO SÁNH MÔ HÌNH (radio Nhiệt độ / Lượng mưa)
+    # ============================================================
     with tab2:
-        st.subheader("📊 So sánh mô hình")
-        if temp_ensembles:
-            fig_cmp = go.Figure()
-            for mk, ens_df in temp_ensembles.items():
-                stats = compute_ensemble_stats(ens_df)
-                if stats.empty:
-                    continue
-                fig_cmp.add_trace(go.Scatter(
-                    x=stats.index, y=stats["mean"], mode="lines",
-                    line=dict(color=ALL_MODELS[mk]["color"], width=2),
-                    name=ALL_MODELS[mk]["label"]))
-            fig_cmp.update_layout(height=420, hovermode="x unified",
-                                  xaxis_title="Thời gian", yaxis_title="°C")
-            st.plotly_chart(fig_cmp, use_container_width=True)
+        compare_var = st.radio(
+            "Chọn biến so sánh:",
+            options=["🌡️ Nhiệt độ", "💧 Lượng mưa"],
+            horizontal=True,
+            key="compare_var_radio",
+            label_visibility="collapsed",
+        )
 
-    # TAB 3
+        st.divider()
+
+        # -------------------- NHIỆT ĐỘ --------------------
+        if compare_var == "🌡️ Nhiệt độ":
+            if not temp_ensembles:
+                st.info("Không có dữ liệu nhiệt độ từ các mô hình đã chọn.")
+            else:
+                st.markdown("**Nhiệt độ 2m — Trung bình ensemble các mô hình**")
+
+                fig_cmp = go.Figure()
+                for mk, ens_df in temp_ensembles.items():
+                    stats = compute_ensemble_stats(ens_df)
+                    if stats.empty:
+                        continue
+                    fig_cmp.add_trace(go.Scatter(
+                        x=stats.index, y=stats["mean"],
+                        mode="lines",
+                        line=dict(color=ALL_MODELS[mk]["color"], width=2),
+                        name=ALL_MODELS[mk]["label"],
+                        hovertemplate=(
+                            f"<b>{ALL_MODELS[mk]['label']}</b><br>"
+                            "%{x|%d/%m %H:%M}<br>"
+                            "Nhiệt độ: %{y:.1f}°C<extra></extra>"
+                        ),
+                    ))
+                fig_cmp.update_layout(
+                    height=480, hovermode="x unified",
+                    xaxis_title="Thời gian", yaxis_title="Nhiệt độ (°C)",
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02),
+                    margin=dict(l=40, r=20, t=40, b=40),
+                )
+                st.plotly_chart(fig_cmp, use_container_width=True)
+
+                st.markdown("**Độ bất định (std) trung bình — Nhiệt độ**")
+                rows = []
+                for mk, ens_df in temp_ensembles.items():
+                    stats = compute_ensemble_stats(ens_df)
+                    if not stats.empty:
+                        rows.append({
+                            "Mô hình": ALL_MODELS[mk]["label"],
+                            "Std TB (°C)": round(stats["std"].mean(), 3),
+                            "Số thành viên": int(stats["n_members"].max()),
+                        })
+                if rows:
+                    st.dataframe(pd.DataFrame(rows),
+                                 use_container_width=True, hide_index=True)
+
+        # -------------------- LƯỢNG MƯA --------------------
+        else:
+            if not precip_ensembles:
+                st.info("Không có dữ liệu mưa từ các mô hình đã chọn.")
+            else:
+                st.markdown("**Mưa 1h — Trung bình ensemble các mô hình**")
+
+                n_models_p = len(precip_ensembles)
+                use_bars_cmp = n_models_p <= BAR_MAX_MODELS
+                st.caption(
+                    f"Dạng hiển thị: **{'cột' if use_bars_cmp else 'đường'}** "
+                    f"({n_models_p} mô hình)"
+                )
+
+                fig_cmp2 = go.Figure()
+                for mk, ens_df in precip_ensembles.items():
+                    stats = compute_ensemble_stats(ens_df)
+                    if stats.empty:
+                        continue
+
+                    if use_bars_cmp:
+                        fig_cmp2.add_trace(go.Bar(
+                            x=stats.index, y=stats["mean"],
+                            marker=dict(color=ALL_MODELS[mk]["color"]),
+                            name=ALL_MODELS[mk]["label"],
+                            hovertemplate=(
+                                f"<b>{ALL_MODELS[mk]['label']}</b><br>"
+                                "%{x|%d/%m %H:%M}<br>"
+                                "Mưa: %{y:.2f} mm<extra></extra>"
+                            ),
+                        ))
+                    else:
+                        fig_cmp2.add_trace(go.Scatter(
+                            x=stats.index, y=stats["mean"],
+                            mode="lines",
+                            line=dict(color=ALL_MODELS[mk]["color"], width=2),
+                            name=ALL_MODELS[mk]["label"],
+                            hovertemplate=(
+                                f"<b>{ALL_MODELS[mk]['label']}</b><br>"
+                                "%{x|%d/%m %H:%M}<br>"
+                                "Mưa: %{y:.2f} mm<extra></extra>"
+                            ),
+                        ))
+
+                fig_cmp2.update_layout(
+                    height=480, hovermode="x unified",
+                    xaxis_title="Thời gian", yaxis_title="Mưa 1h (mm)",
+                    barmode="group", bargap=0.15, bargroupgap=0.05,
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02),
+                    margin=dict(l=40, r=20, t=40, b=40),
+                )
+                st.plotly_chart(fig_cmp2, use_container_width=True)
+
+                st.markdown("**Độ bất định (std) trung bình — Mưa**")
+                rows = []
+                for mk, ens_df in precip_ensembles.items():
+                    stats = compute_ensemble_stats(ens_df)
+                    if not stats.empty:
+                        rows.append({
+                            "Mô hình": ALL_MODELS[mk]["label"],
+                            "Std TB (mm)": round(stats["std"].mean(), 3),
+                            "Số thành viên": int(stats["n_members"].max()),
+                        })
+                if rows:
+                    st.dataframe(pd.DataFrame(rows),
+                                 use_container_width=True, hide_index=True)
+
+    # ============================================================
+    # TAB 3: THEO GIỜ
+    # ============================================================
     with tab3:
         st.subheader("🕐 Chi tiết dự báo theo giờ")
+
         if not temp_ensembles and not precip_ensembles:
             st.warning("Không có dữ liệu.")
         else:
             opts = list(temp_ensembles.keys()) or list(precip_ensembles.keys())
-            selected = st.radio("Chọn mô hình:", options=opts,
-                                format_func=lambda k: ALL_MODELS[k]["label"],
-                                horizontal=True, key="hourly_model_radio",
-                                label_visibility="collapsed")
+            selected = st.radio(
+                "Chọn mô hình:", options=opts,
+                format_func=lambda k: ALL_MODELS[k]["label"],
+                horizontal=True, key="hourly_model_radio",
+                label_visibility="collapsed",
+            )
+
             tdf = temp_ensembles.get(selected)
             pdf = precip_ensembles.get(selected)
 
-            tmean = tdf.mean(axis=1) if tdf is not None and not tdf.empty else pd.Series(dtype=float)
+            tmean = (tdf.mean(axis=1) if tdf is not None and not tdf.empty
+                     else pd.Series(dtype=float))
             if pdf is not None and not pdf.empty:
                 pmean = pdf.mean(axis=1)
                 rprob = (pdf > 0.1).sum(axis=1) / pdf.notna().sum(axis=1)
@@ -630,8 +854,9 @@ if st.session_state.get("has_results"):
 
             if not df.empty:
                 df["phenomenon"] = df.apply(
-                    lambda r: classify_weather_phenomenon(r["time"].hour, r["rain"], r["temp"]),
-                    axis=1)
+                    lambda r: classify_weather_phenomenon(
+                        r["time"].hour, r["rain"], r["temp"]
+                    ), axis=1)
                 df["time_str"] = df["time"].dt.strftime("%d/%m %H:%M")
 
                 disp = pd.DataFrame({
@@ -641,47 +866,77 @@ if st.session_state.get("has_results"):
                     "Mưa (mm)": df["rain"].round(2).values,
                     "Xác suất mưa (%)": (df["rain_prob"] * 100).round(0).astype(int).values,
                 })
-                st.dataframe(disp, use_container_width=True, hide_index=True, height=600)
 
-    # TAB 4
+                st.caption(
+                    f"📊 **{ALL_MODELS[selected]['label']}** — "
+                    f"{len(disp)} giờ "
+                    f"(từ **{df['time'].min().strftime('%d/%m %H:%M')}** "
+                    f"đến **{df['time'].max().strftime('%d/%m %H:%M')}**)"
+                )
+                st.dataframe(disp, use_container_width=True,
+                             hide_index=True, height=600)
+
+                csv_buf = io.StringIO()
+                disp.to_csv(csv_buf, index=False, encoding="utf-8-sig")
+                st.download_button(
+                    "📥 Tải bảng CSV",
+                    data=csv_buf.getvalue().encode("utf-8-sig"),
+                    file_name=f"du_bao_theo_gio_{selected}.csv",
+                    mime="text/csv", key="dl_hourly_tab3",
+                )
+
+    # ============================================================
+    # TAB 4: ĐÁNH GIÁ QCVN
+    # ============================================================
     with tab4:
-        st.subheader("✅ Đánh giá QCVN 84:2024/BTNMT")
-        uploaded = st.file_uploader("Tải file quan trắc (CSV):",
-                                    type=["csv"], key="obs_upload")
-        if uploaded:
-            try:
-                obs_df = pd.read_csv(uploaded, parse_dates=["time"]).set_index("time")
-                all_eval = []
-                for mk in model_keys:
-                    if mk in temp_ensembles:
-                        edf = evaluate_forecast_qcvn(temp_ensembles[mk], obs_df,
-                                                     "temperature_2m", "temperature")
-                        if not edf.empty:
-                            s = summarize_qcvn_evaluation(edf)
-                            s["model"] = ALL_MODELS[mk]["label"]
-                            s["variable"] = "Nhiệt độ"
-                            s["grade"] = grade_forecast_qcvn(s)
-                            all_eval.append(s)
-                    if mk in precip_ensembles:
-                        edf = evaluate_forecast_qcvn(precip_ensembles[mk], obs_df,
-                                                     "precipitation", "precipitation")
-                        if not edf.empty:
-                            s = summarize_qcvn_evaluation(edf)
-                            s["model"] = ALL_MODELS[mk]["label"]
-                            s["variable"] = "Mưa"
-                            s["grade"] = grade_forecast_qcvn(s)
-                            all_eval.append(s)
-                if all_eval:
-                    rdf = pd.DataFrame(all_eval)
-                    st.dataframe(rdf, use_container_width=True, hide_index=True)
-                else:
-                    st.warning("Không đủ dữ liệu.")
-            except Exception as e:
-                st.error(f"Lỗi: {e}")
+        st.subheader("✅ Đánh giá chất lượng dự báo theo QCVN 84:2024/BTNMT")
+        st.caption("Thông tư 46/2024/TT-BTNMT, áp dụng từ 30/6/2025.")
 
-    # TAB 5
+        if not enable_qcvn:
+            st.info("Bật tùy chọn 'Đánh giá sai số QCVN' ở sidebar để xem.")
+        else:
+            st.info("⚠️ **Lưu ý:** Cần file CSV quan trắc với 2 cột `time` và `observed`.")
+
+            uploaded = st.file_uploader("Tải file quan trắc (CSV):",
+                                        type=["csv"], key="obs_upload")
+            if uploaded:
+                try:
+                    obs_df = pd.read_csv(uploaded, parse_dates=["time"]).set_index("time")
+                    all_eval = []
+                    for mk in model_keys:
+                        if mk in temp_ensembles:
+                            edf = evaluate_forecast_qcvn(
+                                temp_ensembles[mk], obs_df,
+                                "temperature_2m", "temperature")
+                            if not edf.empty:
+                                s = summarize_qcvn_evaluation(edf)
+                                s["model"] = ALL_MODELS[mk]["label"]
+                                s["variable"] = "Nhiệt độ"
+                                s["grade"] = grade_forecast_qcvn(s)
+                                all_eval.append(s)
+                        if mk in precip_ensembles:
+                            edf = evaluate_forecast_qcvn(
+                                precip_ensembles[mk], obs_df,
+                                "precipitation", "precipitation")
+                            if not edf.empty:
+                                s = summarize_qcvn_evaluation(edf)
+                                s["model"] = ALL_MODELS[mk]["label"]
+                                s["variable"] = "Mưa"
+                                s["grade"] = grade_forecast_qcvn(s)
+                                all_eval.append(s)
+                    if all_eval:
+                        rdf = pd.DataFrame(all_eval)
+                        st.dataframe(rdf, use_container_width=True, hide_index=True)
+                    else:
+                        st.warning("Không đủ dữ liệu.")
+                except Exception as e:
+                    st.error(f"Lỗi: {e}")
+
+    # ============================================================
+    # TAB 5: LỊCH SỬ
+    # ============================================================
     with tab5:
-        st.subheader("💾 Lịch sử")
+        st.subheader("💾 Lịch sử đánh giá")
         try:
             hist = load_evaluations(limit=200)
         except Exception as e:
@@ -699,8 +954,25 @@ if st.session_state.get("has_results"):
 else:
     st.info("👈 Nhập địa chỉ hoặc tọa độ ở sidebar, chọn mô hình, "
             "rồi nhấn **🚀 Lấy dự báo** để bắt đầu.")
+    st.markdown("""
+### 🌟 Tính năng chính
 
+| Tính năng | Mô tả |
+|---|---|
+| 🌍 **Đa mô hình** | 5 ensemble (WeatherNext 2, GFS, ECMWF, ICON, GEM) + 3 mô hình tham chiếu |
+| 📊 **Dải bất định** | Percentile 10–90 từ ensemble |
+| ✅ **Đánh giá QCVN 84:2024** | ME, MAE, RMSE, Bias, PC theo quy chuẩn |
+| 💾 **Lịch sử** | Lưu theo dõi độ chính xác theo thời gian |
+| 🗺️ **Định vị 2 cấp** | tỉnh/thành + phường/xã |
+| ⭐ **Ghim vị trí** | Lưu và truy cập nhanh các địa điểm yêu thích |
 
+### 📋 Quy trình sử dụng
+
+1. **Nhập vị trí** – gõ địa chỉ rồi nhấn **Enter** (tự động chạy), hoặc nhập tọa độ
+2. **Chọn mô hình** – 5 ensemble mặc định, thêm 3 mô hình đơn nếu muốn
+3. **Xem kết quả** – biểu đồ, so sánh, cảnh báo, đánh giá QCVN
+4. **Ghim vị trí** – nhấn ⭐ để lưu vào góc trên bên phải, click lại để chạy nhanh
+""")
 # ============================================================
 # FOOTER
 # ============================================================
