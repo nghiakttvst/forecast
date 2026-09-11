@@ -232,7 +232,6 @@ st.markdown("""
     .footer-copyright {
         margin-top: 12px; font-size: 0.8rem; color: #6d8a99;
     }
-</style>
     /* ============================================
        ĐẨY "MANAGE APP" RA NGOÀI MÀN HÌNH
        (Streamlit Cloud render nó dạng iframe riêng)
@@ -270,6 +269,7 @@ st.markdown("""
         display: none !important;
         visibility: hidden !important;
     }
+</style>
 """, unsafe_allow_html=True)
 
 
