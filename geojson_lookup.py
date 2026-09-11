@@ -35,7 +35,7 @@ GEOJSON_DIR.mkdir(parents=True, exist_ok=True)
 # ============================================================
 GITHUB_RELEASE_BASE = os.getenv(
     "GITHUB_RELEASE_BASE",
-    "https://github.com/nghiakttvst/weathernext-app/releases/download/v1.0-geojson",
+    "https://github.com/nghiakttvst/forecast/releases/download/v1.0-geojson",
 )
 
 GEOJSON_URLS = {
