@@ -1,6 +1,7 @@
 """
-Module đọc GeoJSON Việt Nam (2 cấp: tỉnh/thành + phường/xã).
-Tự động tải GeoJSON từ GitHub Releases khi chạy trên Streamlit Cloud.
+Module đọc GeoJSON Việt Nam — KHÔNG dùng shapely.
+Tự động tải từ GitHub Releases.
+Reverse geocoding = tắt (dùng forward geocoding + online).
 """
 
 import json
@@ -14,12 +15,9 @@ from pathlib import Path
 from typing import Optional, Tuple, List, Dict, Any
 from functools import lru_cache
 
-from shapely.geometry import shape, Point
-from shapely.strtree import STRtree
-
 
 # ============================================================
-# CẤU HÌNH ĐƯỜNG DẪN (hỗ trợ env var cho Streamlit Cloud)
+# ĐƯỜNG DẪN
 # ============================================================
 GEOJSON_DIR = Path(os.getenv("GEOJSON_DIR", Path(__file__).parent / "geojson"))
 CACHE_DIR = Path(os.getenv("GEOJSON_CACHE_DIR", Path(__file__).parent / "data" / "geojson_cache"))
@@ -28,10 +26,7 @@ GEOJSON_DIR.mkdir(parents=True, exist_ok=True)
 
 
 # ============================================================
-# URL TẢI GEOJSON (từ GitHub Releases)
-# ------------------------------------------------------------
-# ⚠️ THAY 2 URL DƯỚI ĐÂY bằng URL thật của repo bạn
-# (lấy từ bước 1.4)
+# CẤU HÌNH URL — ĐÃ SỬA CHO REPO `forecast`
 # ============================================================
 GITHUB_RELEASE_BASE = os.getenv(
     "GITHUB_RELEASE_BASE",
@@ -49,17 +44,12 @@ GEOJSON_URLS = {
     ),
 }
 
-# Timeout khi tải (giây) — file lớn nên để cao
-DOWNLOAD_TIMEOUT = 300
+DOWNLOAD_TIMEOUT = 600
 
 
-# ============================================================
-# TÊN FILE ỨNG VIÊN
-# ============================================================
 PROVINCE_CANDIDATES = [
     "vn_provinces.geojson", "vn_province.geojson",
     "vn_provinces.json", "provinces.geojson",
-    "tinh_thanh.geojson",
 ]
 
 COMMUNE_CANDIDATES = [
@@ -67,15 +57,13 @@ COMMUNE_CANDIDATES = [
     "vn_Commune _Ward.geojson",
     "vn_commune_ward.geojson",
     "vn_communes.geojson",
-    "vn_wards.geojson",
-    "phuong_xa.geojson",
 ]
 
 
 def _find_file(candidates: List[str]) -> Optional[Path]:
     for name in candidates:
         p = GEOJSON_DIR / name
-        if p.exists():
+        if p.exists() and p.stat().st_size > 1000:
             return p
     return None
 
@@ -91,52 +79,39 @@ def get_commune_file() -> Optional[Path]:
 
 
 # ============================================================
-# TỰ ĐỘNG TẢI GEOJSON TỪ GITHUB RELEASES
+# AUTO-DOWNLOAD
 # ============================================================
-_download_attempted = {"province": False, "commune": False}
+_download_state = {"province": "pending", "commune": "pending"}
 
 
 def _ensure_geojson_downloaded():
-    """
-    Kiểm tra và tải GeoJSON từ GitHub Releases nếu chưa có.
-    Chỉ tải 1 lần cho mỗi file trong 1 tiến trình.
-    """
-    # File cấp tỉnh
-    if not _find_file(PROVINCE_CANDIDATES) and not _download_attempted["province"]:
-        _download_attempted["province"] = True
-        _download_geojson(
-            "vn_provinces.geojson",
-            GEOJSON_URLS["vn_provinces.geojson"],
-        )
+    if not _find_file(PROVINCE_CANDIDATES) and _download_state["province"] == "pending":
+        _download_state["province"] = "trying"
+        ok = _download_geojson("vn_provinces.geojson",
+                               GEOJSON_URLS["vn_provinces.geojson"])
+        _download_state["province"] = "done" if ok else "failed"
 
-    # File cấp phường/xã
-    if not _find_file(COMMUNE_CANDIDATES) and not _download_attempted["commune"]:
-        _download_attempted["commune"] = True
-        _download_geojson(
-            "vn_Commune_Ward.geojson",
-            GEOJSON_URLS["vn_Commune_Ward.geojson"],
-        )
+    if not _find_file(COMMUNE_CANDIDATES) and _download_state["commune"] == "pending":
+        _download_state["commune"] = "trying"
+        ok = _download_geojson("vn_Commune_Ward.geojson",
+                               GEOJSON_URLS["vn_Commune_Ward.geojson"])
+        _download_state["commune"] = "done" if ok else "failed"
 
 
-def _download_geojson(filename: str, url: str, max_retries: int = 3):
-    """Tải file GeoJSON từ URL với retry."""
+def _download_geojson(filename: str, url: str, max_retries: int = 3) -> bool:
     target = GEOJSON_DIR / filename
     target.parent.mkdir(parents=True, exist_ok=True)
 
     for attempt in range(1, max_retries + 1):
         try:
-            print(f"[GEOJSON] ⬇️ Đang tải {filename} (lần {attempt})…")
-            print(f"[GEOJSON]    URL: {url}")
-
+            print(f"[GEOJSON] ⬇️ Tải {filename} (lần {attempt}/{max_retries})")
             req = urllib.request.Request(
-                url,
-                headers={"User-Agent": "WeatherNext-App/1.0"},
+                url, headers={"User-Agent": "WeatherNext-App/1.0"}
             )
             with urllib.request.urlopen(req, timeout=DOWNLOAD_TIMEOUT) as resp:
                 total = int(resp.headers.get("Content-Length", 0))
-                chunk_size = 1024 * 1024  # 1 MB
+                chunk_size = 1024 * 1024
                 downloaded = 0
-
                 with open(target, "wb") as f:
                     while True:
                         chunk = resp.read(chunk_size)
@@ -144,29 +119,22 @@ def _download_geojson(filename: str, url: str, max_retries: int = 3):
                             break
                         f.write(chunk)
                         downloaded += len(chunk)
-                        if total > 0:
-                            pct = downloaded * 100 / total
-                            if downloaded % (10 * chunk_size) == 0:
-                                print(f"[GEOJSON]    Đã tải {pct:.1f}% "
-                                      f"({downloaded/1e6:.1f}/{total/1e6:.1f} MB)")
-
-            size_mb = target.stat().st_size / 1e6
-            print(f"[GEOJSON] ✅ Đã tải {filename}: {size_mb:.2f} MB")
+            print(f"[GEOJSON] ✅ Đã tải {filename}: {target.stat().st_size/1e6:.2f} MB")
             return True
-
         except Exception as e:
-            print(f"[GEOJSON] ❌ Lỗi tải {filename} (lần {attempt}): {e}")
+            print(f"[GEOJSON] ❌ Lỗi tải {filename}: {e}")
             if target.exists():
-                target.unlink()
+                try:
+                    target.unlink()
+                except Exception:
+                    pass
             if attempt < max_retries:
                 time.sleep(3)
-
-    print(f"[GEOJSON] ❌ Thất bại tải {filename} sau {max_retries} lần.")
     return False
 
 
 # ============================================================
-# TIỆN ÍCH CHUỖI
+# CHUỖI
 # ============================================================
 def strip_accents(text: str) -> str:
     if not text:
@@ -180,8 +148,7 @@ def normalize(text: str) -> str:
         return ""
     s = strip_accents(text.lower())
     for prefix in [
-        "thanh pho ", "tp. ", "tp ", "tinh ",
-        "quan ", "huyen ",
+        "thanh pho ", "tp. ", "tp ", "tinh ", "quan ", "huyen ",
         "phuong ", "xa ", "thi tran ", "thi xa ",
         "p. ", "q. ", "tt. ", "tx. ",
     ]:
@@ -193,12 +160,11 @@ def normalize(text: str) -> str:
 def _normalize_keep_prefix(text: str) -> str:
     if not text:
         return ""
-    s = strip_accents(text.lower())
-    return " ".join(s.split())
+    return " ".join(strip_accents(text.lower()).split())
 
 
 # ============================================================
-# CACHE PICKLE
+# CACHE
 # ============================================================
 def _file_hash(path: Path) -> str:
     stat = path.stat()
@@ -215,9 +181,8 @@ def _save_cache(level: str, source: Path, data: Any):
         cp = _cache_path(level, source)
         with open(cp, "wb") as f:
             pickle.dump(data, f, protocol=pickle.HIGHEST_PROTOCOL)
-        print(f"[GEOJSON] Đã cache {level}: {cp.name}")
     except Exception as e:
-        print(f"[GEOJSON] Không lưu được cache: {e}")
+        print(f"[GEOJSON] Cache lỗi: {e}")
 
 
 def _load_cache(level: str, source: Path) -> Optional[Any]:
@@ -226,11 +191,8 @@ def _load_cache(level: str, source: Path) -> Optional[Any]:
         return None
     try:
         with open(cp, "rb") as f:
-            data = pickle.load(f)
-        print(f"[GEOJSON] Đã nạp từ cache: {cp.name}")
-        return data
-    except Exception as e:
-        print(f"[GEOJSON] Cache lỗi, bỏ qua: {e}")
+            return pickle.load(f)
+    except Exception:
         return None
 
 
@@ -239,9 +201,8 @@ def clear_cache():
     try:
         for f in CACHE_DIR.glob("*.pkl"):
             f.unlink()
-        print("[GEOJSON] Đã xóa cache file")
-    except Exception as e:
-        print(f"[GEOJSON] Lỗi xóa cache: {e}")
+    except Exception:
+        pass
 
 
 # ============================================================
@@ -280,19 +241,19 @@ def _extract_names(props: Dict[str, Any], level: str = "province"):
         elif loai in ("thị xã", "thi xa"):
             tien_to = "Thị xã"
 
-        name_with_prefix = f"{tien_to} {ten_xa}" if tien_to else ten_xa
-        display = f"{name_with_prefix}, {ten_tinh}" if ten_tinh else name_with_prefix
+        name_wp = f"{tien_to} {ten_xa}" if tien_to else ten_xa
+        display = f"{name_wp}, {ten_tinh}" if ten_tinh else name_wp
 
         names.append(ten_xa)
         names.append(strip_accents(ten_xa))
         if tien_to:
-            names.append(name_with_prefix)
+            names.append(name_wp)
             names.append(f"{tien_to.lower()} {ten_xa}")
             names.append(strip_accents(f"{tien_to} {ten_xa}"))
         if ten_tinh:
             names.append(f"{ten_xa}, {ten_tinh}")
             names.append(f"{strip_accents(ten_xa)}, {strip_accents(ten_tinh)}")
-            names.append(f"{name_with_prefix}, {ten_tinh}")
+            names.append(f"{name_wp}, {ten_tinh}")
     else:
         ten_tinh = None
         for f in ("ten_tinh", "TenTinh", "TEN_TINH", "name", "Name", "NAME",
@@ -329,10 +290,28 @@ def _extract_names(props: Dict[str, Any], level: str = "province"):
 
 
 # ============================================================
-# BUILD INDEX
+# BUILD INDEX (không dùng shapely)
 # ============================================================
+def _polygon_centroid(geom: dict):
+    """Tính centroid thủ công từ GeoJSON coordinates."""
+    try:
+        gtype = geom.get("type", "")
+        coords = geom.get("coordinates", [])
+        if gtype == "Polygon":
+            ring = coords[0]
+        elif gtype == "MultiPolygon":
+            ring = coords[0][0]
+        else:
+            return None
+        lons = [p[0] for p in ring]
+        lats = [p[1] for p in ring]
+        return (sum(lats) / len(lats), sum(lons) / len(lons))  # (lat, lon)
+    except Exception:
+        return None
+
+
 def _build_index(path: Path, level: str) -> Dict[str, Any]:
-    print(f"[GEOJSON] Đang build index {level} từ {path.name}…")
+    print(f"[GEOJSON] Build index {level}: {path.name}")
     with open(path, "r", encoding="utf-8") as f:
         gj = json.load(f)
 
@@ -344,19 +323,14 @@ def _build_index(path: Path, level: str) -> Dict[str, Any]:
 
     index: Dict[str, Dict[str, Any]] = {}
     entries: List[Dict[str, Any]] = []
-    geometries: List[Any] = []
 
     for feat in features:
         props = feat.get("properties", {}) or {}
         geom = feat.get("geometry")
         if not geom:
             continue
-        try:
-            shp = shape(geom)
-            if not shp.is_valid:
-                shp = shp.buffer(0)
-            centroid = shp.centroid
-        except Exception:
+        centroid = _polygon_centroid(geom)
+        if not centroid:
             continue
 
         names, display = _extract_names(props, level=level)
@@ -366,13 +340,10 @@ def _build_index(path: Path, level: str) -> Dict[str, Any]:
         entry = {
             "display": display,
             "all_names": names,
-            "centroid": (centroid.y, centroid.x),
-            "bbox": shp.bounds,
+            "centroid": centroid,
             "props": props,
-            "geom_idx": len(geometries),
         }
         entries.append(entry)
-        geometries.append(shp)
 
         for n in names:
             k1 = normalize(n)
@@ -382,19 +353,7 @@ def _build_index(path: Path, level: str) -> Dict[str, Any]:
             if k2 and k2 not in index:
                 index[k2] = entry
 
-    try:
-        tree = STRtree(geometries)
-    except Exception as e:
-        print(f"[GEOJSON] STRtree lỗi: {e}")
-        tree = None
-
-    result = {
-        "index": index,
-        "entries": entries,
-        "geometries": geometries,
-        "tree": tree,
-        "count": len(entries),
-    }
+    result = {"index": index, "entries": entries, "count": len(entries)}
     print(f"[GEOJSON] ✅ {level}: {len(entries)} polygon, {len(index)} key")
     return result
 
@@ -409,7 +368,7 @@ def _get_index(level: str) -> Dict[str, Any]:
         raise ValueError(f"level không hợp lệ: {level}")
 
     if not path:
-        return {"index": {}, "entries": [], "geometries": [], "tree": None, "count": 0}
+        return {"index": {}, "entries": [], "count": 0}
 
     cached = _load_cache(level, path)
     if cached is not None:
@@ -467,45 +426,14 @@ def forward_geocode(address: str, level: str = "province",
 
 
 # ============================================================
-# REVERSE GEOCODING
+# REVERSE GEOCODING — TẮT (không shapely)
 # ============================================================
 def reverse_geocode(lat: float, lon: float, level: str = "province") -> Optional[str]:
-    data = _get_index(level)
-    tree = data.get("tree")
-    entries = data.get("entries", [])
-    geometries = data.get("geometries", [])
-
-    if not entries or tree is None:
-        return None
-
-    pt = Point(lon, lat)
-    try:
-        idxs = tree.query(pt)
-    except Exception:
-        idxs = []
-
-    for i in idxs:
-        try:
-            if geometries[i].contains(pt) or geometries[i].intersects(pt):
-                return entries[i]["display"]
-        except Exception:
-            continue
-
-    if not idxs:
-        for entry in entries:
-            try:
-                if geometries[entry["geom_idx"]].contains(pt):
-                    return entry["display"]
-            except Exception:
-                continue
     return None
 
 
 def reverse_geocode_full(lat: float, lon: float) -> Dict[str, Optional[str]]:
-    return {
-        "province": reverse_geocode(lat, lon, level="province"),
-        "commune": reverse_geocode(lat, lon, level="commune"),
-    }
+    return {"province": None, "commune": None}
 
 
 # ============================================================
@@ -539,35 +467,14 @@ def list_communes(province: Optional[str] = None) -> List[str]:
     return sorted(out)
 
 
-# ============================================================
-# TRẠNG THÁI
-# ============================================================
 def geojson_status() -> Dict[str, Any]:
     _ensure_geojson_downloaded()
     pf = get_province_file()
     cf = get_commune_file()
-    status = {
-        "geojson_dir": str(GEOJSON_DIR),
-        "cache_dir": str(CACHE_DIR),
+    return {
         "province_file": pf.name if pf else None,
         "commune_file": cf.name if cf else None,
         "province_exists": pf is not None,
         "commune_exists": cf is not None,
+        "download_state": dict(_download_state),
     }
-    if pf:
-        status["province_size_mb"] = round(pf.stat().st_size / 1e6, 2)
-        status["province_cached"] = _cache_path("province", pf).exists()
-        try:
-            data = _get_index("province")
-            status["province_count"] = data.get("count", 0)
-        except Exception as e:
-            status["province_error"] = str(e)
-    if cf:
-        status["commune_size_mb"] = round(cf.stat().st_size / 1e6, 2)
-        status["commune_cached"] = _cache_path("commune", cf).exists()
-        try:
-            data = _get_index("commune")
-            status["commune_count"] = data.get("count", 0)
-        except Exception as e:
-            status["commune_error"] = str(e)
-    return status
