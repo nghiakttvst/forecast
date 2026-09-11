@@ -233,6 +233,43 @@ st.markdown("""
         margin-top: 12px; font-size: 0.8rem; color: #6d8a99;
     }
 </style>
+    /* ============================================
+       ĐẨY "MANAGE APP" RA NGOÀI MÀN HÌNH
+       (Streamlit Cloud render nó dạng iframe riêng)
+       ============================================ */
+    [data-testid="stStatusWidget"],
+    [data-testid="manage-app-button"],
+    [class*="viewerBadge"],
+    [class*="ManageApp"],
+    [class*="manage-app"],
+    [id*="viewerBadge"],
+    [id*="manage-app"],
+    iframe[title*="streamlit"],
+    iframe[title*="Streamlit"],
+    iframe[src*="streamlit.io"],
+    iframe[src*="share.streamlit"],
+    iframe[src*="/~/+/"] {
+        position: fixed !important;
+        bottom: -9999px !important;
+        right: -9999px !important;
+        left: auto !important;
+        top: auto !important;
+        width: 0 !important;
+        height: 0 !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
+        z-index: -9999 !important;
+        display: none !important;
+        visibility: hidden !important;
+    }
+
+    /* Fallback: ẩn mọi element có chứa chữ "Manage app" bằng attribute selector */
+    a[href*="manage"],
+    button[aria-label*="Manage"],
+    div[role="button"][aria-label*="Manage"] {
+        display: none !important;
+        visibility: hidden !important;
+    }
 """, unsafe_allow_html=True)
 
 
@@ -370,9 +407,9 @@ st.markdown("""
     <span class="deco-icon right">&#x2601;&#xFE0F;</span>
     <div class="header-banner-content">
         <p class="header-banner-line1">
-            <span class="inline-icon">&#x1F30A;</span>
+            <span class="inline-icon">&#x1F4A7;</span>
             Đài Khí tượng Thủy văn Nam Bộ
-            <span class="inline-icon">&#x1F30A;</span>
+            <span class="inline-icon">&#x2601;&#xFE0F;</span>
         </p>
         <p class="header-banner-line2">
             Đài Khí tượng Thủy văn Thành phố Cần Thơ
@@ -391,36 +428,33 @@ with title_col:
     st.title("🌦️ Dự báo thời tiết WeatherNext đa mô hình")
 
 with user_col:
-    # Dòng 1: Tên + Vai trò (trái) | Nút Đăng xuất (phải) — CÙNG HÀNG
-    info_col, logout_col = st.columns([3, 1])
-
-    with info_col:
-        st.markdown(
-            f"<div class='user-info-box'>"
-            f"👤 <strong>{current_user.get('full_name') or current_user['username']}</strong>"
-            f" &nbsp;|&nbsp; Vai trò: <strong>{current_user['role']}</strong>"
-            f"</div>",
-            unsafe_allow_html=True,
-        )
-
-    with logout_col:
-        if st.button("🚪 Đăng xuất", key="btn_logout", use_container_width=True):
-            st.session_state["user"] = None
-            st.session_state["has_results"] = False
-            st.session_state["show_admin"] = False
-            st.rerun()
+    # Info + Nút đăng xuất gộp trong 1 khối
+    # Dòng 1: Tên + Vai trò
+    st.markdown(
+        f"<div style='text-align:right; font-size:0.9rem; "
+        f"padding-top:0.3rem; line-height:1.6;'>"
+        f"👤 <strong>{current_user.get('full_name') or current_user['username']}</strong>"
+        f" &nbsp;|&nbsp; Vai trò: <strong>{current_user['role']}</strong>"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
 
     # Dòng 2: Vị trí đã ghim
     favs = load_favorites() if callable(load_favorites) else []
     st.markdown(
-        f"<div class='user-info-box fav-count'>"
+        f"<div style='text-align:right; font-size:0.85rem; "
+        f"color:#1976d2; margin-bottom:0.4rem;'>"
         f"⭐ Vị trí đã ghim: <strong>{len(favs)}</strong>"
         f"</div>",
         unsafe_allow_html=True,
     )
 
-st.divider()
-
+    # Dòng 3: Nút Đăng xuất FULL WIDTH
+    if st.button("🚪 Đăng xuất", key="btn_logout", use_container_width=True):
+        st.session_state["user"] = None
+        st.session_state["has_results"] = False
+        st.session_state["show_admin"] = False
+        st.rerun()
 
 # ============================================================
 # SIDEBAR
