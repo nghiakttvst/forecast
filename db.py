@@ -1,7 +1,6 @@
 """
-Module kết nối DB tập trung: Supabase PostgreSQL hoặc SQLite local.
-Tự động chọn dựa trên biến môi trường DATABASE_URL.
-Hỗ trợ: psycopg (v3) → psycopg2 → SQLite fallback.
+Module kết nối DB tập trung.
+Tự động fallback: Supabase → SQLite nếu kết nối thất bại.
 """
 
 import os
@@ -25,126 +24,170 @@ except Exception:
     pass
 
 _SQLITE_PATH = os.getenv("SQLITE_PATH", DB_PATH)
-_USE_POSTGRES = bool(DATABASE_URL and DATABASE_URL.startswith("postgres"))
 
-# Phát hiện driver khả dụng
+# Trạng thái kết nối
+_CONNECTION_TESTED = False
+_USE_POSTGRES = False
 _DRIVER = None
-if _USE_POSTGRES:
+_FALLBACK_REASON = ""
+
+
+def _test_postgres_connection():
+    """Test kết nối Postgres 1 lần. Nếu fail → fallback SQLite."""
+    global _USE_POSTGRES, _DRIVER, _FALLBACK_REASON, _CONNECTION_TESTED
+
+    if _CONNECTION_TESTED:
+        return
+
+    _CONNECTION_TESTED = True
+
+    if not DATABASE_URL or not DATABASE_URL.startswith("postgres"):
+        _FALLBACK_REASON = "Không có DATABASE_URL"
+        print("[DB] ℹ️ Không có DATABASE_URL → dùng SQLite")
+        return
+
+    # Thử psycopg3
     try:
-        import psycopg  # v3
-        from psycopg.rows import dict_row
+        import psycopg
         _DRIVER = "psycopg3"
-        print("[DB] Sử dụng driver: psycopg (v3)")
     except ImportError:
         try:
             import psycopg2
-            import psycopg2.extras
             _DRIVER = "psycopg2"
-            print("[DB] Sử dụng driver: psycopg2 (v2)")
         except ImportError:
-            print("[DB] ⚠️ Không có psycopg/psycopg2 → chuyển sang SQLite")
-            _USE_POSTGRES = False
-            _DRIVER = None
+            _FALLBACK_REASON = "Không có driver psycopg/psycopg2"
+            print("[DB] ⚠️ Không có driver → dùng SQLite")
+            return
+
+    # Test kết nối thực tế
+    dsn = DATABASE_URL.strip()
+    if "sslmode" not in dsn:
+        sep = "&" if "?" in dsn else "?"
+        dsn = f"{dsn}{sep}sslmode=require"
+
+    try:
+        if _DRIVER == "psycopg3":
+            import psycopg
+            conn = psycopg.connect(dsn, connect_timeout=10,
+                                   prepare_threshold=None)
+            conn.close()
+        else:
+            import psycopg2
+            conn = psycopg2.connect(dsn, connect_timeout=10)
+            conn.close()
+
+        _USE_POSTGRES = True
+        print(f"[DB] ✅ Kết nối Supabase OK ({_DRIVER})")
+
+    except Exception as e:
+        _USE_POSTGRES = False
+        _FALLBACK_REASON = f"Kết nối Supabase thất bại: {str(e)[:200]}"
+        print(f"[DB] ⚠️ {_FALLBACK_REASON}")
+        print(f"[DB] → Fallback sang SQLite: {_SQLITE_PATH}")
 
 
-# ============================================================
-# HELPERS
-# ============================================================
 def _adapt_sql(sql: str) -> str:
-    """SQLite dùng ?, Postgres dùng %s."""
     if _USE_POSTGRES:
         return sql.replace("?", "%s")
     return sql
 
 
-def _clean_dsn(url: str) -> str:
-    """
-    Chuẩn hóa DSN:
-    - Bỏ khoảng trắng đầu/cuối
-    - Thêm sslmode=require nếu chưa có
-    """
-    url = url.strip()
-    if _USE_POSTGRES and "sslmode" not in url:
-        sep = "&" if "?" in url else "?"
-        url = f"{url}{sep}sslmode=require"
-    return url
-
-
 @contextmanager
 def get_connection():
-    """Trả về connection tới Postgres hoặc SQLite."""
+    """Trả về connection tới Postgres hoặc SQLite (tự động fallback)."""
+    _test_postgres_connection()
+
     if _USE_POSTGRES and _DRIVER:
-        dsn = _clean_dsn(DATABASE_URL)
+        dsn = DATABASE_URL.strip()
+        if "sslmode" not in dsn:
+            sep = "&" if "?" in dsn else "?"
+            dsn = f"{dsn}{sep}sslmode=require"
 
-        if _DRIVER == "psycopg3":
-            import psycopg
-            conn = psycopg.connect(dsn, connect_timeout=15)
-            try:
-                yield conn
-                conn.commit()
-            except Exception:
-                conn.rollback()
-                raise
-            finally:
-                conn.close()
-
-        elif _DRIVER == "psycopg2":
-            import psycopg2
-            conn = psycopg2.connect(dsn, connect_timeout=15)
-            try:
-                yield conn
-                conn.commit()
-            except Exception:
-                conn.rollback()
-                raise
-            finally:
-                conn.close()
-    else:
-        # SQLite fallback
-        Path(_SQLITE_PATH).parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(_SQLITE_PATH, timeout=10)
-        conn.row_factory = sqlite3.Row
         try:
-            yield conn
-            conn.commit()
-        except Exception:
-            conn.rollback()
-            raise
-        finally:
-            conn.close()
+            if _DRIVER == "psycopg3":
+                import psycopg
+                conn = psycopg.connect(dsn, connect_timeout=15,
+                                       prepare_threshold=None)
+            else:
+                import psycopg2
+                conn = psycopg2.connect(dsn, connect_timeout=15)
+
+            try:
+                yield conn
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+            finally:
+                conn.close()
+            return
+        except Exception as e:
+            print(f"[DB] ⚠️ Postgres lỗi runtime: {e}")
+            print(f"[DB] → Chuyển sang SQLite")
+            # Không return → rơi xuống SQLite
+            _FALLBACK_REASON = str(e)[:200]
+            # Chỉ fallback trong phiên này, không đổi global
+            _use_sqlite_now = True
+    else:
+        _use_sqlite_now = True
+
+    # SQLite
+    Path(_SQLITE_PATH).parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(_SQLITE_PATH, timeout=10)
+    conn.row_factory = sqlite3.Row
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def _get_cursor(conn):
-    """Trả về cursor phù hợp với driver."""
-    if _DRIVER == "psycopg3":
-        from psycopg.rows import dict_row
-        return conn.cursor(row_factory=dict_row)
-    elif _DRIVER == "psycopg2":
-        import psycopg2.extras
-        return conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    if _USE_POSTGRES and _DRIVER == "psycopg3":
+        try:
+            from psycopg.rows import dict_row
+            return conn.cursor(row_factory=dict_row)
+        except Exception:
+            return conn.cursor()
+    elif _USE_POSTGRES and _DRIVER == "psycopg2":
+        try:
+            import psycopg2.extras
+            return conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        except Exception:
+            return conn.cursor()
     return conn.cursor()
 
 
 def execute(conn, sql: str, params: tuple = None):
-    """Execute SQL với placeholder tự động chuyển đổi."""
-    cur = _get_cursor(conn)
-    sql = _adapt_sql(sql)
-    if params:
-        cur.execute(sql, params)
+    # Xác định đang dùng DB nào dựa vào kiểu conn
+    is_sqlite_conn = isinstance(conn, sqlite3.Connection)
+
+    if is_sqlite_conn:
+        cur = conn.cursor()
+        if params:
+            cur.execute(sql, params)
+        else:
+            cur.execute(sql)
     else:
-        cur.execute(sql)
+        cur = _get_cursor(conn)
+        sql_adapted = _adapt_sql(sql)
+        if params:
+            cur.execute(sql_adapted, params)
+        else:
+            cur.execute(sql_adapted)
     return cur
 
 
 def fetchall(conn, sql: str, params: tuple = None):
-    """Execute + fetch all, trả về list of dict."""
     cur = execute(conn, sql, params)
     rows = cur.fetchall()
     return [dict(r) for r in rows]
 
 
 def fetchone(conn, sql: str, params: tuple = None):
-    """Execute + fetch one."""
     cur = execute(conn, sql, params)
     row = cur.fetchone()
     return dict(row) if row else None
@@ -154,21 +197,29 @@ def fetchone(conn, sql: str, params: tuple = None):
 # THÔNG TIN DB
 # ============================================================
 def is_postgres() -> bool:
-    return _USE_POSTGRES and _DRIVER is not None
+    _test_postgres_connection()
+    return _USE_POSTGRES
 
 
 def get_db_info() -> dict:
-    if is_postgres():
+    _test_postgres_connection()
+
+    if _USE_POSTGRES:
         url_safe = DATABASE_URL
         if "@" in url_safe and ":" in url_safe.split("@")[0]:
             parts = url_safe.split("@")
             user_part = parts[0].split("//")[-1]
             user = user_part.split(":")[0]
             url_safe = f"postgresql://{user}:***@{parts[1]}"
-        return {"type": f"PostgreSQL ({_DRIVER})", "url": url_safe, "persistent": True}
+        return {
+            "type": f"PostgreSQL ({_DRIVER})",
+            "url": url_safe,
+            "persistent": True,
+        }
+
     return {
         "type": "SQLite (local)",
         "path": _SQLITE_PATH,
         "persistent": False,
-        "reason": "Thiếu driver hoặc DATABASE_URL",
+        "reason": _FALLBACK_REASON or "Không có DATABASE_URL",
     }
