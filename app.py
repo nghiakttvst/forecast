@@ -40,6 +40,115 @@ from storage import (
 from analytics import log_visit, get_stats
 from admin import render_admin_panel
 
+# ============================================================
+# HELPER: MÀU GRADIENT THEO % XÁC SUẤT MƯA
+# ============================================================
+def _pct_to_color(pct: float) -> str:
+    """
+    Chuyển % xác suất mưa thành màu gradient:
+    0% → xanh lá | 50% → vàng | 75% → cam | 90% → đỏ | 100% → tím
+    """
+    if pct <= 0:
+        return "#e0e0e0"
+    pct = max(0.0, min(100.0, float(pct)))
+
+    anchors = [
+        (0,   ( 76, 175,  80)),   # #4CAF50 xanh lá
+        (25,  (139, 195,  74)),   # #8BC34A xanh vàng
+        (50,  (255, 193,   7)),   # #FFC107 vàng
+        (75,  (255,  87,  34)),   # #FF5722 cam
+        (90,  (244,  67,  54)),   # #F44336 đỏ
+        (100, (156,  39, 176)),   # #9C27B0 tím
+    ]
+    for i in range(len(anchors) - 1):
+        p1, c1 = anchors[i]
+        p2, c2 = anchors[i + 1]
+        if p1 <= pct <= p2:
+            t = (pct - p1) / (p2 - p1) if p2 > p1 else 0
+            r = int(c1[0] + (c2[0] - c1[0]) * t)
+            g = int(c1[1] + (c2[1] - c1[1]) * t)
+            b = int(c1[2] + (c2[2] - c1[2]) * t)
+            return f"rgb({r}, {g}, {b})"
+    return "rgb(156, 39, 176)"
+
+
+def _render_hourly_table(df: pd.DataFrame):
+    """
+    Render bảng giờ với cột xác suất mưa dạng thanh gradient màu.
+    """
+    rows_html = ""
+    for _, r in df.iterrows():
+        pct = int(round(float(r["rain_prob_pct"])))
+        temp_v = float(r["temp"])
+        rain_v = float(r["rain"])
+
+        if pct > 0:
+            color = _pct_to_color(pct)
+            bar_html = (
+                '<div style="display: flex; align-items: center; gap: 8px;">'
+                '<div style="flex: 1; background: #f0f0f0; border-radius: 4px; '
+                'height: 20px; overflow: hidden; min-width: 80px;">'
+                f'<div style="width: {pct}%; height: 100%; '
+                f'background: {color}; transition: width 0.3s ease;"></div>'
+                '</div>'
+                f'<span style="min-width: 42px; text-align: right; '
+                f'font-weight: 700; color: {color}; font-size: 0.85rem;">'
+                f'{pct}%</span>'
+                '</div>'
+            )
+        else:
+            bar_html = '<span style="color: #c0c0c0; font-size: 0.85rem;">—</span>'
+
+        rows_html += (
+            '<tr style="transition: background 0.15s;">'
+            f'<td style="padding: 6px 10px; border-bottom: 1px solid #e8f4f8; '
+            f'font-size: 0.85rem; white-space: nowrap;">{r["time_str"]}</td>'
+            f'<td style="padding: 6px 10px; border-bottom: 1px solid #e8f4f8; '
+            f'font-size: 0.85rem; white-space: nowrap;">{r["phenomenon"]}</td>'
+            f'<td style="padding: 6px 10px; border-bottom: 1px solid #e8f4f8; '
+            f'font-size: 0.85rem; text-align: right; '
+            f'font-weight: 600; color: #d32f2f;">{temp_v:.1f}</td>'
+            f'<td style="padding: 6px 10px; border-bottom: 1px solid #e8f4f8; '
+            f'font-size: 0.85rem; text-align: right; '
+            f'font-weight: 600; color: #0288d1;">{rain_v:.2f}</td>'
+            f'<td style="padding: 6px 10px; border-bottom: 1px solid #e8f4f8;">'
+            f'{bar_html}</td>'
+            '</tr>'
+        )
+
+    html = (
+        '<div style="max-height: 620px; overflow-y: auto; '
+        'border: 1px solid #d0e4f0; border-radius: 10px; '
+        'box-shadow: 0 2px 8px rgba(74,159,224,0.08);">'
+        '<table style="width: 100%; border-collapse: collapse; '
+        "font-family: 'Be Vietnam Pro', sans-serif;\">"
+        '<thead style="position: sticky; top: 0; z-index: 10; '
+        'background: linear-gradient(135deg, #4a9fe0 0%, #6dc8c2 100%); '
+        'color: #ffffff;">'
+        '<tr>'
+        '<th style="padding: 10px; text-align: left; font-size: 0.82rem; '
+        'font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">'
+        'Ngày/Giờ</th>'
+        '<th style="padding: 10px; text-align: left; font-size: 0.82rem; '
+        'font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">'
+        'Hiện tượng</th>'
+        '<th style="padding: 10px; text-align: right; font-size: 0.82rem; '
+        'font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">'
+        'Nhiệt độ (°C)</th>'
+        '<th style="padding: 10px; text-align: right; font-size: 0.82rem; '
+        'font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">'
+        'Mưa (mm)</th>'
+        '<th style="padding: 10px; text-align: left; font-size: 0.82rem; '
+        'font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; '
+        'min-width: 180px;">Xác suất mưa</th>'
+        '</tr>'
+        '</thead>'
+        f'<tbody>{rows_html}</tbody>'
+        '</table>'
+        '</div>'
+    )
+
+    st.markdown(html, unsafe_allow_html=True)
 
 # ============================================================
 # HẰNG SỐ
@@ -356,9 +465,9 @@ st.markdown("""
     <span class="deco-icon right">&#x2601;&#xFE0F;</span>
     <div class="header-banner-content">
         <p class="header-banner-line1">
-            <span class="inline-icon">&#x1F30A;</span>
+            <span class="inline-icon">&#x1F4A7;</span>
             Đài Khí tượng Thủy văn Nam Bộ
-            <span class="inline-icon">&#x1F30A;</span>
+            <span class="inline-icon">&#x2601;&#xFE0F;</span>
         </p>
         <p class="header-banner-line2">
             Đài Khí tượng Thủy văn Thành phố Cần Thơ
@@ -1061,16 +1170,27 @@ if st.session_state.get("has_results"):
                 st.caption(f"📊 {len(disp)} giờ — từ "
                            f"**{df['time'].min().strftime('%d/%m %H:%M')}** "
                            f"đến **{df['time'].max().strftime('%d/%m %H:%M')}**")
-                st.dataframe(disp, use_container_width=True, hide_index=True,
-                             height=600)
 
+                # Chuẩn bị dữ liệu để render
+                render_df = pd.DataFrame({
+                    "time_str": df["time_str"].values,
+                    "phenomenon": df["phenomenon"].values,
+                    "temp": df["temp"].round(1).values,
+                    "rain": df["rain"].round(2).values,
+                    "rain_prob_pct": (df["rain_prob"] * 100).round(0).values,
+                })
+
+                # Render bảng HTML với thanh gradient
+                _render_hourly_table(render_df)
+
+                # Vẫn giữ nút tải CSV
                 csv_buf = io.StringIO()
                 disp.to_csv(csv_buf, index=False, encoding="utf-8-sig")
                 st.download_button("📥 Tải CSV",
                                    data=csv_buf.getvalue().encode("utf-8-sig"),
                                    file_name=f"du_bao_{selected}.csv",
                                    mime="text/csv", key="dl_hourly")
-
+                
     # ============================================================
     # TAB 4: QCVN
     # ============================================================
