@@ -1,193 +1,216 @@
 """
-Module theo dõi lượt truy cập, thống kê người dùng.
+Module phân tích ensemble: percentile, độ bất định, cảnh báo cực đoan.
+Bao gồm hàm phân loại hiện tượng thời tiết theo QCVN 46:2012/BTNMT & WMO.
 """
 
-import sqlite3
-import os
-import hashlib
-from datetime import datetime, timedelta
-from typing import Dict, List
-from config import DB_PATH
+import numpy as np
+import pandas as pd
+from typing import Dict, List, Optional
 
-
-def _ensure_visits_table():
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS visits (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            session_id TEXT NOT NULL,
-            user_id INTEGER,
-            username TEXT,
-            ip_hash TEXT,
-            user_agent TEXT,
-            page TEXT,
-            action TEXT,
-            created_at TEXT NOT NULL
-        )
-    """)
-    cur.execute("""
-        CREATE INDEX IF NOT EXISTS idx_visits_created
-        ON visits(created_at)
-    """)
-    cur.execute("""
-        CREATE INDEX IF NOT EXISTS idx_visits_session
-        ON visits(session_id)
-    """)
-    conn.commit()
-    conn.close()
-
-
-def log_visit(
-    session_id: str,
-    user_id: int = None,
-    username: str = None,
-    ip: str = None,
-    user_agent: str = None,
-    page: str = "main",
-    action: str = "view",
-):
-    """Ghi log 1 lượt truy cập."""
-    _ensure_visits_table()
-
-    ip_hash = ""
-    if ip:
-        ip_hash = hashlib.md5(ip.encode()).hexdigest()[:16]
-
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-    try:
-        cur.execute("""
-            INSERT INTO visits
-            (session_id, user_id, username, ip_hash, user_agent, page, action, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            session_id, user_id, username, ip_hash,
-            (user_agent or "")[:200], page, action,
-            datetime.utcnow().isoformat(),
-        ))
-        conn.commit()
-    except Exception as e:
-        print(f"[ANALYTICS] Lỗi log: {e}")
-    finally:
-        conn.close()
+from config import ALERT_THRESHOLDS, ALERT_PROB_THRESHOLD, RAIN_THRESHOLDS
 
 
 # ============================================================
-# THỐNG KÊ
+# THỐNG KÊ ENSEMBLE
 # ============================================================
-def get_stats() -> Dict:
-    """Thống kê tổng quan."""
-    _ensure_visits_table()
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
+def compute_ensemble_stats(df: pd.DataFrame) -> pd.DataFrame:
+    """Tính thống kê ensemble: mean, median, min, max, p10, p25, p75, p90, std."""
+    if df is None or df.empty:
+        return pd.DataFrame()
 
-    now = datetime.utcnow()
-    today_start = now.replace(hour=0, minute=0, second=0).isoformat()
-    week_start = (now - timedelta(days=7)).isoformat()
-    month_start = (now - timedelta(days=30)).isoformat()
-
-    stats = {}
-
-    # Tổng lượt xem
-    cur.execute("SELECT COUNT(*) FROM visits")
-    stats["total_views"] = cur.fetchone()[0]
-
-    # Số session duy nhất (unique visitors)
-    cur.execute("SELECT COUNT(DISTINCT session_id) FROM visits")
-    stats["unique_sessions"] = cur.fetchone()[0]
-
-    # Hôm nay
-    cur.execute("SELECT COUNT(*) FROM visits WHERE created_at >= ?", (today_start,))
-    stats["views_today"] = cur.fetchone()[0]
-
-    cur.execute(
-        "SELECT COUNT(DISTINCT session_id) FROM visits WHERE created_at >= ?",
-        (today_start,),
-    )
-    stats["unique_today"] = cur.fetchone()[0]
-
-    # Tuần
-    cur.execute("SELECT COUNT(*) FROM visits WHERE created_at >= ?", (week_start,))
-    stats["views_week"] = cur.fetchone()[0]
-
-    cur.execute(
-        "SELECT COUNT(DISTINCT session_id) FROM visits WHERE created_at >= ?",
-        (week_start,),
-    )
-    stats["unique_week"] = cur.fetchone()[0]
-
-    # Tháng
-    cur.execute("SELECT COUNT(*) FROM visits WHERE created_at >= ?", (month_start,))
-    stats["views_month"] = cur.fetchone()[0]
-
-    # Số user đăng ký
-    try:
-        cur.execute("SELECT COUNT(*) FROM users")
-        stats["total_users"] = cur.fetchone()[0]
-        cur.execute("SELECT COUNT(*) FROM users WHERE is_active = 1")
-        stats["active_users"] = cur.fetchone()[0]
-    except Exception:
-        stats["total_users"] = 0
-        stats["active_users"] = 0
-
-    conn.close()
+    stats = pd.DataFrame(index=df.index)
+    stats["mean"] = df.mean(axis=1)
+    stats["median"] = df.median(axis=1)
+    stats["min"] = df.min(axis=1)
+    stats["max"] = df.max(axis=1)
+    stats["p10"] = df.quantile(0.10, axis=1)
+    stats["p25"] = df.quantile(0.25, axis=1)
+    stats["p75"] = df.quantile(0.75, axis=1)
+    stats["p90"] = df.quantile(0.90, axis=1)
+    stats["std"] = df.std(axis=1)
+    stats["n_members"] = df.notna().sum(axis=1)
     return stats
 
 
-def get_visits_by_day(days: int = 30) -> List[Dict]:
-    """Lấy lượt xem theo ngày trong N ngày qua."""
-    _ensure_visits_table()
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
+# ============================================================
+# XÁC SUẤT VƯỢT NGƯỠNG
+# ============================================================
+def probability_exceed(df: pd.DataFrame, threshold: float,
+                       direction: str = "above") -> pd.Series:
+    """Xác suất vượt ngưỡng từ ensemble."""
+    if df is None or df.empty:
+        return pd.Series(dtype=float)
 
-    start = (datetime.utcnow() - timedelta(days=days)).isoformat()
-    cur.execute("""
-        SELECT
-            substr(created_at, 1, 10) AS day,
-            COUNT(*) AS views,
-            COUNT(DISTINCT session_id) AS unique_sessions
-        FROM visits
-        WHERE created_at >= ?
-        GROUP BY day
-        ORDER BY day
-    """, (start,))
-    rows = cur.fetchall()
-    conn.close()
-    return [
-        {"day": r[0], "views": r[1], "unique_sessions": r[2]}
-        for r in rows
-    ]
+    if direction == "above":
+        prob = (df > threshold).sum(axis=1) / df.notna().sum(axis=1)
+    else:
+        prob = (df < threshold).sum(axis=1) / df.notna().sum(axis=1)
+    return prob.replace([np.inf, -np.inf], np.nan)
 
 
-def get_recent_visits(limit: int = 100) -> List[Dict]:
-    """Lấy danh sách lượt truy cập gần đây."""
-    _ensure_visits_table()
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT id, session_id, username, page, action, created_at
-        FROM visits
-        ORDER BY created_at DESC LIMIT ?
-    """, (limit,))
-    rows = cur.fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+def detect_extreme_events(temp_ensemble: Optional[pd.DataFrame],
+                          precip_ensemble: Optional[pd.DataFrame]) -> List[Dict]:
+    """Phát hiện các sự kiện cực đoan."""
+    alerts = []
+
+    # Nhiệt độ cao
+    if temp_ensemble is not None and not temp_ensemble.empty:
+        prob_high = probability_exceed(
+            temp_ensemble, ALERT_THRESHOLDS["temp_high"], "above"
+        )
+        for t, p in prob_high.items():
+            if p >= ALERT_PROB_THRESHOLD:
+                alerts.append({
+                    "type": "temp_high",
+                    "label": f"Nắng nóng (T > {ALERT_THRESHOLDS['temp_high']}°C)",
+                    "time": t,
+                    "probability": float(p),
+                    "threshold": ALERT_THRESHOLDS["temp_high"],
+                    "value_mean": float(temp_ensemble.loc[t].mean()),
+                })
+
+        prob_low = probability_exceed(
+            temp_ensemble, ALERT_THRESHOLDS["temp_low"], "below"
+        )
+        for t, p in prob_low.items():
+            if p >= ALERT_PROB_THRESHOLD:
+                alerts.append({
+                    "type": "temp_low",
+                    "label": f"Rét (T < {ALERT_THRESHOLDS['temp_low']}°C)",
+                    "time": t,
+                    "probability": float(p),
+                    "threshold": ALERT_THRESHOLDS["temp_low"],
+                    "value_mean": float(temp_ensemble.loc[t].mean()),
+                })
+
+    # Mưa lớn 1h
+    if precip_ensemble is not None and not precip_ensemble.empty:
+        prob_rain = probability_exceed(
+            precip_ensemble, ALERT_THRESHOLDS["rain_heavy_1h"], "above"
+        )
+        for t, p in prob_rain.items():
+            if p >= ALERT_PROB_THRESHOLD:
+                alerts.append({
+                    "type": "rain_heavy_1h",
+                    "label": f"Mưa lớn 1h (> {ALERT_THRESHOLDS['rain_heavy_1h']} mm)",
+                    "time": t,
+                    "probability": float(p),
+                    "threshold": ALERT_THRESHOLDS["rain_heavy_1h"],
+                    "value_mean": float(precip_ensemble.loc[t].mean()),
+                })
+
+        # Mưa lớn 24h
+        daily = precip_ensemble.resample("1D").sum()
+        prob_daily = probability_exceed(
+            daily, ALERT_THRESHOLDS["rain_heavy_24h"], "above"
+        )
+        for t, p in prob_daily.items():
+            if p >= ALERT_PROB_THRESHOLD:
+                alerts.append({
+                    "type": "rain_heavy_24h",
+                    "label": f"Mưa rất lớn 24h (> {ALERT_THRESHOLDS['rain_heavy_24h']} mm)",
+                    "time": t,
+                    "probability": float(p),
+                    "threshold": ALERT_THRESHOLDS["rain_heavy_24h"],
+                    "value_mean": float(daily.loc[t].mean()),
+                })
+
+    alerts.sort(key=lambda x: x["time"])
+    return alerts
 
 
-def get_top_pages(limit: int = 10) -> List[Dict]:
-    """Top các page được xem nhiều nhất."""
-    _ensure_visits_table()
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT page, COUNT(*) AS views
-        FROM visits
-        GROUP BY page
-        ORDER BY views DESC LIMIT ?
-    """, (limit,))
-    rows = cur.fetchall()
-    conn.close()
-    return [{"page": r[0], "views": r[1]} for r in rows]
+def deduplicate_alerts(alerts: List[Dict]) -> List[Dict]:
+    """Gộp cảnh báo liên tiếp cùng loại trong 6 giờ."""
+    if not alerts:
+        return []
+    deduped = []
+    for a in alerts:
+        if deduped and deduped[-1]["type"] == a["type"]:
+            delta = (a["time"] - deduped[-1]["time"]).total_seconds() / 3600
+            if delta <= 6:
+                if a["probability"] > deduped[-1]["probability"]:
+                    deduped[-1] = a
+                continue
+        deduped.append(a)
+    return deduped
+
+
+# ============================================================
+# PHÂN LOẠI HIỆN TƯỢNG THỜI TIẾT THEO QCVN 46:2012/BTNMT & WMO
+# ============================================================
+def classify_weather_phenomenon(hour: int, rain_mm: float,
+                                 temp_c: float = None) -> str:
+    """
+    Phân loại hiện tượng thời tiết dựa trên lượng mưa và giờ.
+
+    Parameters
+    ----------
+    hour : int
+        Giờ trong ngày (0-23)
+    rain_mm : float
+        Lượng mưa trong 1 giờ (mm)
+    temp_c : float, optional
+        Nhiệt độ (°C)
+
+    Returns
+    -------
+    str
+        Mô tả hiện tượng kèm icon
+    """
+    is_night = (hour < 6) or (hour >= 18)
+    moon = " 🌙" if is_night else ""
+
+    t_trace = RAIN_THRESHOLDS.get("rain_trace", 0.1)
+    t_light = RAIN_THRESHOLDS.get("rain_light", 2.5)
+    t_mod = RAIN_THRESHOLDS.get("rain_moderate", 7.5)
+    t_heavy = RAIN_THRESHOLDS.get("rain_heavy", 15.0)
+
+    if rain_mm > t_heavy:
+        return f"⛈️ Mưa rất to{moon}"
+    elif rain_mm > t_mod:
+        return f"🌧️ Mưa to{moon}"
+    elif rain_mm > t_light:
+        return f"🌦️ Mưa vừa{moon}"
+    elif rain_mm > t_trace:
+        return f"🌦️ Mưa nhẹ{moon}"
+    elif rain_mm > 0.01:
+        return f"☁️ Nhiều mây{moon}"
+
+    # Không mưa
+    if is_night:
+        return "🌙 Trời trong"
+    else:
+        if temp_c is not None and temp_c >= 35.0:
+            return "☀️ Nắng nóng"
+        return "☀️ Nắng"
+
+
+# ============================================================
+# TÓM TẮT
+# ============================================================
+def summarize_temperature(stats: pd.DataFrame) -> Dict:
+    """Tóm tắt dự báo nhiệt độ."""
+    if stats is None or stats.empty:
+        return {}
+    return {
+        "max_mean": float(stats["mean"].max()),
+        "min_mean": float(stats["mean"].min()),
+        "time_max": str(stats["mean"].idxmax()),
+        "time_min": str(stats["mean"].idxmin()),
+        "max_abs": float(stats["max"].max()),
+        "min_abs": float(stats["min"].min()),
+        "avg_std": float(stats["std"].mean()),
+    }
+
+
+def summarize_precipitation(stats: pd.DataFrame) -> Dict:
+    """Tóm tắt dự báo mưa."""
+    if stats is None or stats.empty:
+        return {}
+    return {
+        "total_rain_mm": float(stats["mean"].sum()),
+        "total_rain_p90_mm": float(stats["p90"].sum()),
+        "peak_hourly_mm": float(stats["mean"].max()),
+        "time_peak": str(stats["mean"].idxmax()),
+        "avg_std": float(stats["std"].mean()),
+    }
