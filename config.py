@@ -11,8 +11,9 @@ ENSEMBLE_API = "https://ensemble-api.open-meteo.com/v1/ensemble"
 FORECAST_API = "https://api.open-meteo.com/v1/forecast"
 GEOCODING_USER_AGENT = "weathernext_app_v1 (contact@example.com)"
 
+
 # ============================================================
-# MÔ HÌNH DỰ BÁO
+# MÔ HÌNH ENSEMBLE (nhiều thành viên)
 # ============================================================
 MODELS = {
     "weathernext2": {
@@ -23,6 +24,8 @@ MODELS = {
         "region": "Global",
         "resolution_km": 25,
         "ensemble": True,
+        "update_freq_hours": 12,
+        "update_cycles": [0, 12],
     },
     "gfs_ensemble": {
         "label": "GFS Ensemble (NOAA)",
@@ -32,6 +35,8 @@ MODELS = {
         "region": "Global",
         "resolution_km": 25,
         "ensemble": True,
+        "update_freq_hours": 6,
+        "update_cycles": [0, 6, 12, 18],
     },
     "ecmwf_ensemble": {
         "label": "ECMWF IFS Ensemble",
@@ -41,6 +46,8 @@ MODELS = {
         "region": "Global",
         "resolution_km": 25,
         "ensemble": True,
+        "update_freq_hours": 12,
+        "update_cycles": [0, 12],
     },
     "icon_ensemble": {
         "label": "ICON Ensemble (DWD)",
@@ -50,6 +57,8 @@ MODELS = {
         "region": "Global / Europe",
         "resolution_km": 11,
         "ensemble": True,
+        "update_freq_hours": 6,
+        "update_cycles": [0, 6, 12, 18],
     },
     "gem_ensemble": {
         "label": "GEM Ensemble (Canada)",
@@ -59,9 +68,15 @@ MODELS = {
         "region": "Global / North America",
         "resolution_km": 15,
         "ensemble": True,
+        "update_freq_hours": 12,
+        "update_cycles": [0, 12],
     },
 }
 
+
+# ============================================================
+# MÔ HÌNH DETERMINISTIC (1 thành viên)
+# ============================================================
 DETERMINISTIC_MODELS = {
     "meteofrance_world": {
         "label": "Meteo-France ARPEGE (World)",
@@ -71,6 +86,8 @@ DETERMINISTIC_MODELS = {
         "region": "Global",
         "resolution_km": 10,
         "ensemble": False,
+        "update_freq_hours": 6,
+        "update_cycles": [0, 6, 12, 18],
     },
     "jma_global": {
         "label": "JMA GSM (Nhat)",
@@ -80,6 +97,8 @@ DETERMINISTIC_MODELS = {
         "region": "Global / Japan",
         "resolution_km": 55,
         "ensemble": False,
+        "update_freq_hours": 6,
+        "update_cycles": [0, 6, 12, 18],
     },
     "ukmo_global": {
         "label": "UKMO Global (UK Met Office)",
@@ -89,8 +108,11 @@ DETERMINISTIC_MODELS = {
         "region": "Global / UK",
         "resolution_km": 10,
         "ensemble": False,
+        "update_freq_hours": 6,
+        "update_cycles": [0, 6, 12, 18],
     },
 }
+
 
 # ============================================================
 # BIẾN KHÍ TƯỢNG
@@ -102,8 +124,9 @@ VARIABLE_INFO = {
     "precipitation": {"label": "Mưa 1h", "unit": "mm", "type": "precipitation"},
 }
 
+
 # ============================================================
-# QCVN 84:2024/BTNMT – NGƯỠNG SAI SỐ CHO PHÉP
+# QCVN 84:2024/BTNMT — Ngưỡng sai số cho phép
 # ============================================================
 QCVN_PRECIP_THRESHOLDS = {
     "0-12h": {"lower": -0.20, "upper": 0.20},
@@ -119,17 +142,18 @@ QCVN_TEMP_THRESHOLDS = {
     "72h+": 3.5,
 }
 
+
 # ============================================================
-# NGƯỠNG PHÂN LOẠI HIỆN TƯỢNG MƯA (mm/h)
-# Theo QCVN 46:2012/BTNMT & WMO
+# NGƯỠNG PHÂN LOẠI HIỆN TƯỢNG MƯA (QCVN 46:2012/BTNMT & WMO)
 # ============================================================
 RAIN_THRESHOLDS = {
-    "rain_trace": 0.1,      # Mưa rất nhẹ / mưa phùn
-    "rain_light": 2.5,      # Mưa nhẹ
-    "rain_moderate": 7.5,   # Mưa vừa
-    "rain_heavy": 15.0,     # Mưa to
-    "rain_very_heavy": 30.0,  # Mưa rất to
+    "rain_trace": 0.1,
+    "rain_light": 2.5,
+    "rain_moderate": 7.5,
+    "rain_heavy": 15.0,
+    "rain_very_heavy": 30.0,
 }
+
 
 # ============================================================
 # CẢNH BÁO CỰC ĐOAN
@@ -141,13 +165,14 @@ ALERT_THRESHOLDS = {
     "rain_heavy_24h": 50.0,
     "wind_high": 15.0,
 }
-
 ALERT_PROB_THRESHOLD = 0.30
 
+
 # ============================================================
-# LƯU TRỮ
+# LƯU TRỮ — ưu tiên Supabase, fallback SQLite local
 # ============================================================
 DB_PATH = str(Path(__file__).parent / "data" / "history.db")
+
 
 # ============================================================
 # THÔNG BÁO (tùy chọn)

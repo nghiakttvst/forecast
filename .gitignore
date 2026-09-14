@@ -1,4 +1,4 @@
-# GeoJSON — tải từ GitHub Releases
+﻿# GeoJSON — tải từ GitHub Releases
 geojson/
 *.geojson
 *.pkl
@@ -21,3 +21,17 @@ Thumbs.db
 
 # Secrets
 .streamlit/secrets.toml
+
+# Backup
+backup/
+Backup/
+*.bak
+
+# Test files
+test_*.py
+build_cache.py
+check_*.py
+diagnose.py
+fix_encoding.py
+migrate.py
+run.bat

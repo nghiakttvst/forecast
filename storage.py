@@ -1,172 +1,145 @@
 """
-Module lưu trữ lịch sử dự báo, đánh giá và vị trí yêu thích vào SQLite.
+Module lưu trữ dự báo, đánh giá, vị trí ghim — dùng db.py (Supabase/SQLite).
 """
 
-import sqlite3
 import json
 from datetime import datetime
-from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List
 import pandas as pd
-from config import DB_PATH
+
+from db import get_connection, execute, fetchall, fetchone, is_postgres
 
 
 def _ensure_db():
-    Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS forecasts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            created_at TEXT NOT NULL,
-            location TEXT, lat REAL, lon REAL,
-            model_key TEXT, variable TEXT,
-            horizon_days INTEGER, summary_json TEXT
-        )
-    """)
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS evaluations (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            created_at TEXT NOT NULL,
-            location TEXT, lat REAL, lon REAL,
-            model_key TEXT, variable TEXT,
-            ME REAL, MAE REAL, RMSE REAL, Bias REAL,
-            PC REAL, Scf_mean REAL, pct_within_qcvn REAL, n_points INTEGER
-        )
-    """)
-    conn.commit()
-    conn.close()
+    with get_connection() as conn:
+        if is_postgres():
+            execute(conn, """
+                CREATE TABLE IF NOT EXISTS forecasts (
+                    id SERIAL PRIMARY KEY, created_at TEXT NOT NULL,
+                    location TEXT, lat REAL, lon REAL,
+                    model_key TEXT, variable TEXT,
+                    horizon_days INTEGER, summary_json TEXT)
+            """)
+            execute(conn, """
+                CREATE TABLE IF NOT EXISTS evaluations (
+                    id SERIAL PRIMARY KEY, created_at TEXT NOT NULL,
+                    location TEXT, lat REAL, lon REAL,
+                    model_key TEXT, variable TEXT,
+                    ME REAL, MAE REAL, RMSE REAL, Bias REAL,
+                    PC REAL, Scf_mean REAL, pct_within_qcvn REAL,
+                    n_points INTEGER)
+            """)
+            execute(conn, """
+                CREATE TABLE IF NOT EXISTS favorites (
+                    id SERIAL PRIMARY KEY, created_at TEXT NOT NULL,
+                    address TEXT NOT NULL, display TEXT NOT NULL,
+                    lat REAL, lon REAL)
+            """)
+        else:
+            execute(conn, """
+                CREATE TABLE IF NOT EXISTS forecasts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    created_at TEXT NOT NULL, location TEXT, lat REAL, lon REAL,
+                    model_key TEXT, variable TEXT, horizon_days INTEGER,
+                    summary_json TEXT)
+            """)
+            execute(conn, """
+                CREATE TABLE IF NOT EXISTS evaluations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    created_at TEXT NOT NULL, location TEXT, lat REAL, lon REAL,
+                    model_key TEXT, variable TEXT, ME REAL, MAE REAL, RMSE REAL,
+                    Bias REAL, PC REAL, Scf_mean REAL, pct_within_qcvn REAL,
+                    n_points INTEGER)
+            """)
+            execute(conn, """
+                CREATE TABLE IF NOT EXISTS favorites (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    created_at TEXT NOT NULL, address TEXT NOT NULL,
+                    display TEXT NOT NULL, lat REAL, lon REAL)
+            """)
 
 
-def save_forecast(location: str, lat: float, lon: float, model_key: str,
-                  variable: str, horizon_days: int, summary: Dict):
+# ============================================================
+# FORECASTS
+# ============================================================
+def save_forecast(location, lat, lon, model_key, variable,
+                  horizon_days, summary):
     _ensure_db()
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-    cur.execute("""
-        INSERT INTO forecasts
-        (created_at, location, lat, lon, model_key, variable, horizon_days, summary_json)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        datetime.utcnow().isoformat(),
-        location, lat, lon, model_key, variable, horizon_days,
-        json.dumps(summary, default=str),
-    ))
-    conn.commit()
-    conn.close()
+    with get_connection() as conn:
+        execute(conn, """
+            INSERT INTO forecasts
+            (created_at, location, lat, lon, model_key, variable,
+             horizon_days, summary_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (datetime.utcnow().isoformat(), location, lat, lon,
+              model_key, variable, horizon_days,
+              json.dumps(summary, default=str)))
 
 
 def load_forecasts(limit: int = 500) -> pd.DataFrame:
     _ensure_db()
-    conn = sqlite3.connect(DB_PATH)
-    df = pd.read_sql_query(
-        f"SELECT * FROM forecasts ORDER BY created_at DESC LIMIT {limit}", conn
-    )
-    conn.close()
-    return df
-
-
-def save_evaluation(location: str, lat: float, lon: float, model_key: str,
-                    variable: str, summary: Dict):
-    _ensure_db()
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-    cur.execute("""
-        INSERT INTO evaluations
-        (created_at, location, lat, lon, model_key, variable,
-         ME, MAE, RMSE, Bias, PC, Scf_mean, pct_within_qcvn, n_points)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        datetime.utcnow().isoformat(),
-        location, lat, lon, model_key, variable,
-        summary.get("ME"), summary.get("MAE"), summary.get("RMSE"),
-        summary.get("Bias"), summary.get("PC"), summary.get("Scf_mean"),
-        summary.get("pct_within_qcvn"), summary.get("n_points"),
-    ))
-    conn.commit()
-    conn.close()
-
-
-def load_evaluations(location: Optional[str] = None,
-                     model_key: Optional[str] = None,
-                     limit: int = 500) -> pd.DataFrame:
-    _ensure_db()
-    conn = sqlite3.connect(DB_PATH)
-    query = "SELECT * FROM evaluations"
-    params = []
-    conditions = []
-    if location:
-        conditions.append("location LIKE ?")
-        params.append(f"%{location}%")
-    if model_key:
-        conditions.append("model_key = ?")
-        params.append(model_key)
-    if conditions:
-        query += " WHERE " + " AND ".join(conditions)
-    query += " ORDER BY created_at DESC LIMIT ?"
-    params.append(limit)
-    df = pd.read_sql_query(query, conn, params=params)
-    conn.close()
-    return df
+    with get_connection() as conn:
+        rows = fetchall(conn,
+            "SELECT * FROM forecasts ORDER BY created_at DESC LIMIT ?",
+            (limit,))
+    return pd.DataFrame(rows) if rows else pd.DataFrame()
 
 
 # ============================================================
-# VỊ TRÍ YÊU THÍCH
+# EVALUATIONS
 # ============================================================
-def _ensure_favorites_table():
-    Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS favorites (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            created_at TEXT NOT NULL,
-            address TEXT NOT NULL,
-            display TEXT NOT NULL,
-            lat REAL, lon REAL
-        )
-    """)
-    conn.commit()
-    conn.close()
+def save_evaluation(location, lat, lon, model_key, variable, summary):
+    _ensure_db()
+    with get_connection() as conn:
+        execute(conn, """
+            INSERT INTO evaluations
+            (created_at, location, lat, lon, model_key, variable,
+             ME, MAE, RMSE, Bias, PC, Scf_mean, pct_within_qcvn, n_points)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (datetime.utcnow().isoformat(), location, lat, lon,
+              model_key, variable,
+              summary.get("ME"), summary.get("MAE"), summary.get("RMSE"),
+              summary.get("Bias"), summary.get("PC"),
+              summary.get("Scf_mean"), summary.get("pct_within_qcvn"),
+              summary.get("n_points")))
 
 
+def load_evaluations(location=None, model_key=None, limit=500) -> pd.DataFrame:
+    _ensure_db()
+    with get_connection() as conn:
+        rows = fetchall(conn,
+            "SELECT * FROM evaluations ORDER BY created_at DESC LIMIT ?",
+            (limit,))
+    return pd.DataFrame(rows) if rows else pd.DataFrame()
+
+
+# ============================================================
+# FAVORITES
+# ============================================================
 def save_favorite(address: str, display: str, lat: float, lon: float) -> bool:
-    _ensure_favorites_table()
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-    cur.execute("SELECT id FROM favorites WHERE display = ?", (display,))
-    if cur.fetchone():
-        conn.close()
-        return False
-    cur.execute("""
-        INSERT INTO favorites (created_at, address, display, lat, lon)
-        VALUES (?, ?, ?, ?, ?)
-    """, (datetime.utcnow().isoformat(), address, display, lat, lon))
-    conn.commit()
-    conn.close()
-    return True
+    _ensure_db()
+    with get_connection() as conn:
+        existing = fetchone(conn,
+            "SELECT id FROM favorites WHERE display = ?", (display,))
+        if existing:
+            return False
+        execute(conn, """
+            INSERT INTO favorites (created_at, address, display, lat, lon)
+            VALUES (?, ?, ?, ?, ?)
+        """, (datetime.utcnow().isoformat(), address, display, lat, lon))
+        return True
 
 
 def load_favorites() -> List[Dict]:
-    _ensure_favorites_table()
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT id, created_at, address, display, lat, lon
-        FROM favorites ORDER BY created_at DESC
-    """)
-    rows = cur.fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+    _ensure_db()
+    with get_connection() as conn:
+        return fetchall(conn,
+            "SELECT id, created_at, address, display, lat, lon "
+            "FROM favorites ORDER BY created_at DESC")
 
 
 def delete_favorite(fav_id: int) -> bool:
-    _ensure_favorites_table()
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-    cur.execute("DELETE FROM favorites WHERE id = ?", (fav_id,))
-    affected = cur.rowcount
-    conn.commit()
-    conn.close()
-    return affected > 0
+    _ensure_db()
+    with get_connection() as conn:
+        execute(conn, "DELETE FROM favorites WHERE id = ?", (fav_id,))
+        return True
