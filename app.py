@@ -1,6 +1,7 @@
 """
 Ứng dụng Dự báo thời tiết WeatherNext — Đài KTTV TP. Cần Thơ
 Public — không cần đăng nhập. Admin bảo vệ bằng password.
+Giờ VN (UTC+7) + Lọc biểu đồ từ model run + Tóm tắt MAX đa mô hình.
 """
 
 import io
@@ -40,9 +41,46 @@ from analytics import log_visit, get_stats
 from admin import render_admin_panel
 
 
+# ============================================================
+# HẰNG SỐ
+# ============================================================
 BAR_MAX_MODELS = 3
 AUTO_REFRESH_MIN = 60
 ADMIN_PASSWORD = "kttv2026"
+_VN_TZ = timezone(timedelta(hours=7))   # Giờ Việt Nam UTC+7
+
+
+# ============================================================
+# HELPER: LỌC ENSEMBLE THEO MODEL RUN TIME
+# ============================================================
+def filter_ensemble_from_run(ens_dict: dict) -> dict:
+    """
+    Với mỗi mô hình, chỉ giữ dữ liệu từ thời điểm mô hình chạy gần nhất
+    (theo giờ VN) trở đi. Loại bỏ dữ liệu cũ trước model run.
+    """
+    out = {}
+    for mk, df in ens_dict.items():
+        if df is None or df.empty:
+            continue
+        try:
+            run_utc = get_model_run_time(mk)
+            run_vn_naive = run_utc.astimezone(_VN_TZ).replace(tzinfo=None)
+
+            # Index của df là naive local time → so sánh trực tiếp
+            filtered = df[df.index >= run_vn_naive]
+
+            # Nếu lọc xong rỗng (dữ liệu API chưa có giờ mới) → giữ nguyên gốc
+            if filtered.empty:
+                print(f"[FILTER] {mk}: rỗng sau lọc, giữ nguyên gốc")
+                out[mk] = df
+            else:
+                print(f"[FILTER] {mk}: {len(df)} → {len(filtered)} giờ "
+                      f"(từ {run_vn_naive.strftime('%d/%m %H:%M')} VN)")
+                out[mk] = filtered
+        except Exception as e:
+            print(f"[FILTER] Lỗi {mk}: {e}")
+            out[mk] = df
+    return out
 
 
 # ============================================================
@@ -155,7 +193,6 @@ st.markdown("""
         font-style: italic; padding-left: 4px;
     }
 
-    /* Widget thống kê */
     .visit-widget {
         position: fixed;
         bottom: 12px;
@@ -266,16 +303,14 @@ for k, v in _defaults.items():
 
 
 # ============================================================
-# LOG VISIT (1 lần / session)
+# LOG VISIT
 # ============================================================
 if not st.session_state.get("visit_logged"):
     try:
         log_visit(
             session_id=st.session_state["session_id"],
-            user_id=None,
-            username="guest",
-            page="main",
-            action="view",
+            user_id=None, username="guest",
+            page="main", action="view",
         )
     except Exception as e:
         print(f"[VISIT] Lỗi: {e}")
@@ -549,7 +584,9 @@ if trigger_run:
     st.session_state["saved_model_keys"] = list(model_keys)
     st.session_state["saved_address"] = address if address else ""
     st.session_state["last_fetch_ts"] = _time.time()
-    st.session_state["last_fetch_str"] = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    st.session_state["last_fetch_str"] = datetime.now(_VN_TZ).strftime(
+        "%d/%m/%Y %H:%M:%S"
+    )
 
 
 # ============================================================
@@ -566,6 +603,10 @@ if st.session_state.get("has_results"):
 
     temp_ensembles = build_ensemble_dict(raw_models, "temperature_2m")
     precip_ensembles = build_ensemble_dict(raw_models, "precipitation")
+
+    # 🔽 LỌC: chỉ hiển thị từ giờ model run gần nhất trở đi
+    temp_ensembles = filter_ensemble_from_run(temp_ensembles)
+    precip_ensembles = filter_ensemble_from_run(precip_ensembles)
 
     auto_refresh_needed = False
     if st.session_state.get("last_fetch_ts"):
@@ -585,7 +626,10 @@ if st.session_state.get("has_results"):
     with res_info:
         st.success(f"📍 {full_name} – Tọa độ: {lat:.4f}, {lon:.4f}")
         fetch_time = st.session_state.get("last_fetch_str", "—")
-        st.caption(f"🕐 **Lần tải cuối:** {fetch_time}  ·  📊 {len(model_keys)} mô hình")
+        st.caption(
+            f"🕐 **Lần tải cuối:** {fetch_time} (giờ VN)  ·  "
+            f"📊 {len(model_keys)} mô hình"
+        )
 
     with res_refresh:
         if st.button("🔄 Làm mới dữ liệu", key="btn_force_refresh",
@@ -595,6 +639,7 @@ if st.session_state.get("has_results"):
             st.session_state["pending_run"] = True
             st.rerun()
 
+    # ---------- Bảng trạng thái real-time ----------
     with st.expander("🛰️ **Trạng thái real-time các mô hình** — nhấn để xem",
                      expanded=False):
         st.caption("Các mô hình cập nhật theo chu kỳ UTC (Z): 00Z · 06Z · 12Z · 18Z")
@@ -604,7 +649,7 @@ if st.session_state.get("has_results"):
             age_h = get_model_age_hours(mk)
             run_str = format_run_time(mk)
             next_run = get_next_run_time(mk)
-            next_vn = next_run.astimezone(timezone(timedelta(hours=7)))
+            next_vn = next_run.astimezone(_VN_TZ)
 
             freq = info.get("update_freq_hours", 12)
             if age_h < freq:
@@ -626,11 +671,14 @@ if st.session_state.get("has_results"):
                 unsafe_allow_html=True,
             )
 
+        _vn_now = datetime.now(_VN_TZ)
+        _utc_now = datetime.now(timezone.utc)
         st.caption(
-            f"🕐 Giờ VN: **{datetime.now().strftime('%d/%m/%Y %H:%M:%S')}**  ·  "
-            f"🌍 UTC: **{datetime.now(timezone.utc).strftime('%d/%m %H:%M')}Z**"
+            f"🕐 Giờ VN: **{_vn_now.strftime('%d/%m/%Y %H:%M:%S')}**  ·  "
+            f"🌍 UTC: **{_utc_now.strftime('%d/%m %H:%M')}Z**"
         )
 
+    # ---------- Nút ghim ----------
     fav_col1, fav_col2 = st.columns([1, 4])
     with fav_col1:
         current_favs = load_favorites()
@@ -646,6 +694,7 @@ if st.session_state.get("has_results"):
                 except Exception as e:
                     st.error(f"Lỗi ghim: {e}")
 
+    # ---------- Tabs ----------
     tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "📈 Biểu đồ dự báo",
         "📊 So sánh mô hình",
@@ -654,12 +703,21 @@ if st.session_state.get("has_results"):
         "💾 Lịch sử",
     ])
 
-    # TAB 1
+    # ============================================================
+    # TAB 1: BIỂU ĐỒ
+    # ============================================================
     with tab1:
         st.subheader("📈 Dự báo nhiệt độ và mưa")
+        st.caption(
+            "⏱️ Mỗi mô hình hiển thị **từ thời điểm cập nhật gần nhất** trở đi. "
+            "Dữ liệu trước chu kỳ cập nhật đã được loại bỏ."
+        )
+
         fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
                             subplot_titles=("Nhiệt độ 2m (°C)", "Mưa 1h (mm)"),
                             vertical_spacing=0.12)
+
+        # Nhiệt độ
         for mk, ens_df in temp_ensembles.items():
             stats = compute_ensemble_stats(ens_df)
             if stats.empty:
@@ -678,6 +736,7 @@ if st.session_state.get("has_results"):
                                      line=dict(color=color, width=2),
                                      name=f"{label} (TB)"), row=1, col=1)
 
+        # Mưa
         n_p = len(precip_ensembles)
         use_bars = n_p <= BAR_MAX_MODELS
         for mk, ens_df in precip_ensembles.items():
@@ -706,26 +765,166 @@ if st.session_state.get("has_results"):
                           margin=dict(l=40, r=20, t=80, b=40))
         st.plotly_chart(fig, use_container_width=True)
 
+        # ========================================================
+        # TÓM TẮT — Lấy MAX/MIN từ TẤT CẢ mô hình
+        # ========================================================
         st.subheader(f"📌 Tóm tắt dự báo {days} ngày tới")
-        c1, c2, c3, c4 = st.columns(4)
-        if temp_ensembles:
-            fm = list(temp_ensembles.keys())[0]
-            stats = compute_ensemble_stats(temp_ensembles[fm])
-            c1.metric("🌡️ T cao nhất", f"{float(stats['mean'].max()):.1f} °C")
-            c2.metric("❄️ T thấp nhất", f"{float(stats['mean'].min()):.1f} °C")
-        if precip_ensembles:
-            fm = list(precip_ensembles.keys())[0]
-            stats = compute_ensemble_stats(precip_ensembles[fm])
-            c3.metric("💧 Tổng mưa", f"{float(stats['mean'].sum()):.1f} mm")
-            c4.metric("☔ Đỉnh mưa 1h", f"{float(stats['mean'].max()):.1f} mm")
+        st.caption(
+            f"Giá trị **lớn nhất/nhỏ nhất** được chọn từ **{len(model_keys)} mô hình** "
+            f"đã chạy. Di chuột vào biểu tượng ⓘ bên cạnh mỗi ô để xem mô hình đạt giá trị đó."
+        )
 
-    # TAB 2
+        c1, c2, c3, c4 = st.columns(4)
+
+        # ---------- NHIỆT ĐỘ CAO NHẤT ----------
+        if temp_ensembles:
+            t_max_val = -float("inf")
+            t_max_model = None
+            t_max_time = None
+
+            for mk, ens_df in temp_ensembles.items():
+                stats = compute_ensemble_stats(ens_df)
+                if stats.empty:
+                    continue
+                val = float(stats["mean"].max())
+                if val > t_max_val:
+                    t_max_val = val
+                    t_max_model = ALL_MODELS[mk]["label"]
+                    t_max_time = stats["mean"].idxmax()
+
+            try:
+                t_max_time_vn = t_max_time.astimezone(_VN_TZ)
+            except Exception:
+                t_max_time_vn = t_max_time
+
+            if t_max_model:
+                c1.metric(
+                    "🌡️ T cao nhất",
+                    f"{t_max_val:.1f} °C",
+                    help=(
+                        f"**{t_max_val:.1f}°C** — giá trị cao nhất từ tất cả mô hình\n\n"
+                        f"📅 Đạt lúc: **{t_max_time_vn.strftime('%d/%m/%Y %H:%M')}** (giờ VN)\n\n"
+                        f"📊 Mô hình: **{t_max_model}**\n\n"
+                        f"_(Giá trị trung bình ensemble lớn nhất trong "
+                        f"{len(temp_ensembles)} mô hình đã chạy)_"
+                    ),
+                )
+
+        # ---------- NHIỆT ĐỘ THẤP NHẤT ----------
+        if temp_ensembles:
+            t_min_val = float("inf")
+            t_min_model = None
+            t_min_time = None
+
+            for mk, ens_df in temp_ensembles.items():
+                stats = compute_ensemble_stats(ens_df)
+                if stats.empty:
+                    continue
+                val = float(stats["mean"].min())
+                if val < t_min_val:
+                    t_min_val = val
+                    t_min_model = ALL_MODELS[mk]["label"]
+                    t_min_time = stats["mean"].idxmin()
+
+            try:
+                t_min_time_vn = t_min_time.astimezone(_VN_TZ)
+            except Exception:
+                t_min_time_vn = t_min_time
+
+            if t_min_model:
+                c2.metric(
+                    "❄️ T thấp nhất",
+                    f"{t_min_val:.1f} °C",
+                    help=(
+                        f"**{t_min_val:.1f}°C** — giá trị thấp nhất từ tất cả mô hình\n\n"
+                        f"📅 Đạt lúc: **{t_min_time_vn.strftime('%d/%m/%Y %H:%M')}** (giờ VN)\n\n"
+                        f"📊 Mô hình: **{t_min_model}**\n\n"
+                        f"_(Giá trị trung bình ensemble nhỏ nhất trong "
+                        f"{len(temp_ensembles)} mô hình đã chạy)_"
+                    ),
+                )
+
+        # ---------- TỔNG MƯA (MAX giữa các mô hình) ----------
+        if precip_ensembles:
+            r_total_max = -float("inf")
+            r_total_model = None
+            r_total_min = float("inf")
+            r_total_min_model = None
+
+            for mk, ens_df in precip_ensembles.items():
+                stats = compute_ensemble_stats(ens_df)
+                if stats.empty:
+                    continue
+                total = float(stats["mean"].sum())
+                if total > r_total_max:
+                    r_total_max = total
+                    r_total_model = ALL_MODELS[mk]["label"]
+                if total < r_total_min:
+                    r_total_min = total
+                    r_total_min_model = ALL_MODELS[mk]["label"]
+
+            if r_total_model:
+                c3.metric(
+                    "💧 Tổng mưa (max)",
+                    f"{r_total_max:.1f} mm",
+                    help=(
+                        f"**{r_total_max:.1f} mm** — tổng mưa CAO NHẤT "
+                        f"trong {days} ngày tới\n\n"
+                        f"📊 Mô hình: **{r_total_model}**\n\n"
+                        f"📉 So sánh:\n"
+                        f"• Cao nhất: {r_total_max:.1f} mm ({r_total_model})\n"
+                        f"• Thấp nhất: {r_total_min:.1f} mm ({r_total_min_model})\n\n"
+                        f"_(Giá trị cộng dồn qua {days * 24} giờ cho mỗi mô hình, "
+                        f"sau đó chọn mô hình có tổng lớn nhất)_"
+                    ),
+                )
+
+        # ---------- ĐỈNH MƯA 1H (MAX giữa các mô hình) ----------
+        if precip_ensembles:
+            r_peak_max = -float("inf")
+            r_peak_model = None
+            r_peak_time = None
+
+            for mk, ens_df in precip_ensembles.items():
+                stats = compute_ensemble_stats(ens_df)
+                if stats.empty:
+                    continue
+                val = float(stats["mean"].max())
+                if val > r_peak_max:
+                    r_peak_max = val
+                    r_peak_model = ALL_MODELS[mk]["label"]
+                    r_peak_time = stats["mean"].idxmax()
+
+            try:
+                r_peak_time_vn = r_peak_time.astimezone(_VN_TZ)
+            except Exception:
+                r_peak_time_vn = r_peak_time
+
+            if r_peak_model:
+                c4.metric(
+                    "☔ Đỉnh mưa 1h",
+                    f"{r_peak_max:.1f} mm",
+                    help=(
+                        f"**{r_peak_max:.1f} mm** — lượng mưa lớn nhất trong **1 giờ**\n\n"
+                        f"📅 Đạt lúc: **{r_peak_time_vn.strftime('%d/%m/%Y %H:%M')}** (giờ VN)\n\n"
+                        f"📊 Mô hình: **{r_peak_model}**\n\n"
+                        f"_(Giá trị trung bình ensemble tại giờ cao nhất, "
+                        f"chọn từ {len(precip_ensembles)} mô hình đã chạy)_"
+                    ),
+                )
+
+    # ============================================================
+    # TAB 2: SO SÁNH
+    # ============================================================
     with tab2:
         compare_var = st.radio(
             "Chọn biến so sánh:",
             options=["🌡️ Nhiệt độ", "💧 Lượng mưa"],
             horizontal=True, key="compare_var_radio",
             label_visibility="collapsed",
+        )
+        st.caption(
+            "⏱️ Chỉ hiển thị dữ liệu **từ chu kỳ cập nhật gần nhất** của từng mô hình."
         )
         st.divider()
 
@@ -793,7 +992,9 @@ if st.session_state.get("has_results"):
                     st.dataframe(pd.DataFrame(rows), use_container_width=True,
                                  hide_index=True)
 
-    # TAB 3
+    # ============================================================
+    # TAB 3: THEO GIỜ
+    # ============================================================
     with tab3:
         st.subheader("🕐 Chi tiết dự báo theo giờ")
         if not temp_ensembles and not precip_ensembles:
@@ -805,8 +1006,24 @@ if st.session_state.get("has_results"):
                                 horizontal=True, key="hourly_model_radio",
                                 label_visibility="collapsed")
 
+            # Bắt đầu từ model run time của mô hình đang chọn (giờ VN)
+            try:
+                _run_utc = get_model_run_time(selected)
+                _start_vn = _run_utc.astimezone(_VN_TZ).replace(tzinfo=None)
+                _start_str = _start_vn.strftime("%d/%m/%Y %H:%M")
+                start = pd.Timestamp(_start_vn)
+            except Exception as e:
+                print(f"[TAB3] Lỗi tính start: {e}")
+                start = pd.Timestamp(
+                    datetime.now(_VN_TZ).replace(tzinfo=None)
+                ).floor("h") - pd.Timedelta(hours=1)
+                _start_str = start.strftime("%d/%m/%Y %H:%M")
+
             run_str = format_run_time(selected)
-            st.caption(f"🛰️ **{ALL_MODELS[selected]['label']}** — Chu kỳ: {run_str}")
+            st.caption(
+                f"🛰️ **{ALL_MODELS[selected]['label']}** — Chu kỳ: {run_str}  ·  "
+                f"Hiển thị từ **{_start_str} VN** trở đi"
+            )
 
             tdf = temp_ensembles.get(selected)
             pdf = precip_ensembles.get(selected)
@@ -820,14 +1037,13 @@ if st.session_state.get("has_results"):
                 pmean = pd.Series(0.0, index=tmean.index)
                 rprob = pd.Series(0.0, index=tmean.index)
 
-            now = pd.Timestamp.now()
-            start = now.floor("h") - pd.Timedelta(hours=1)
-
             df = pd.DataFrame({"time": tmean.index, "temp": tmean.values,
                                "rain": pmean.values, "rain_prob": rprob.values})
             df = df[df["time"] >= start].sort_values("time").reset_index(drop=True)
 
-            if not df.empty:
+            if df.empty:
+                st.warning("Không có dữ liệu trong khoảng thời gian hiện tại.")
+            else:
                 df["phenomenon"] = df.apply(
                     lambda r: classify_weather_phenomenon(r["time"].hour,
                                                           r["rain"], r["temp"]),
@@ -855,7 +1071,9 @@ if st.session_state.get("has_results"):
                                    file_name=f"du_bao_{selected}.csv",
                                    mime="text/csv", key="dl_hourly")
 
-    # TAB 4
+    # ============================================================
+    # TAB 4: QCVN
+    # ============================================================
     with tab4:
         st.subheader("✅ Đánh giá QCVN 84:2024/BTNMT")
         if not enable_qcvn:
@@ -894,7 +1112,9 @@ if st.session_state.get("has_results"):
                 except Exception as e:
                     st.error(f"Lỗi: {e}")
 
-    # TAB 5
+    # ============================================================
+    # TAB 5: LỊCH SỬ
+    # ============================================================
     with tab5:
         st.subheader("💾 Lịch sử đánh giá")
         try:

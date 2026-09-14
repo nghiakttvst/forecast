@@ -299,13 +299,16 @@ def get_model_info(model_key: str) -> Dict:
 # REAL-TIME: TÍNH CHU KỲ MÔ HÌNH
 # ============================================================
 def get_model_run_time(model_key: str) -> datetime:
-    """Thời điểm mô hình chạy gần nhất (UTC)."""
+    """
+    Thời điểm mô hình chạy gần nhất (UTC).
+    Trừ 20 phút đệm để tránh lấy chu kỳ chưa có dữ liệu.
+    """
     info = MODELS.get(model_key) or DETERMINISTIC_MODELS.get(model_key)
     if not info:
         return datetime.now(timezone.utc)
 
     cycles = info.get("update_cycles", [0, 12])
-    now_utc = datetime.now(timezone.utc) - timedelta(minutes=30)
+    now_utc = datetime.now(timezone.utc) - timedelta(minutes=20)
 
     cur_hour = now_utc.hour
     valid_cycles = [c for c in sorted(cycles) if c <= cur_hour]
@@ -318,7 +321,6 @@ def get_model_run_time(model_key: str) -> datetime:
         return (now_utc - timedelta(days=1)).replace(
             hour=last_cycle, minute=0, second=0, microsecond=0
         )
-
 
 def get_model_age_hours(model_key: str) -> float:
     run_time = get_model_run_time(model_key)
