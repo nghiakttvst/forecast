@@ -43,12 +43,112 @@ from analytics import log_visit, get_stats
 from admin import render_admin_panel
 
 
+# ============================================================
+# HẰNG SỐ
+# ============================================================
 BAR_MAX_MODELS = 3
 AUTO_REFRESH_MIN = 60
 ADMIN_PASSWORD = "kttv2026"
 _VN_TZ = timezone(timedelta(hours=7))
 
 
+# ============================================================
+# HELPER: MÀU GRADIENT THEO % XÁC SUẤT MƯA
+# ============================================================
+def _pct_to_color(pct: float) -> str:
+    """0% → xanh lá | 25% → xanh vàng | 50% → vàng | 75% → cam | 90% → đỏ | 100% → tím"""
+    if pct <= 0:
+        return "#e0e0e0"
+    pct = max(0.0, min(100.0, float(pct)))
+    anchors = [
+        (0,   ( 76, 175,  80)),
+        (25,  (139, 195,  74)),
+        (50,  (255, 193,   7)),
+        (75,  (255,  87,  34)),
+        (90,  (244,  67,  54)),
+        (100, (156,  39, 176)),
+    ]
+    for i in range(len(anchors) - 1):
+        p1, c1 = anchors[i]
+        p2, c2 = anchors[i + 1]
+        if p1 <= pct <= p2:
+            t = (pct - p1) / (p2 - p1) if p2 > p1 else 0
+            r = int(c1[0] + (c2[0] - c1[0]) * t)
+            g = int(c1[1] + (c2[1] - c1[1]) * t)
+            b = int(c1[2] + (c2[2] - c1[2]) * t)
+            return f"rgb({r}, {g}, {b})"
+    return "rgb(156, 39, 176)"
+
+
+def _render_hourly_table(df: pd.DataFrame):
+    """Render bảng giờ với cột xác suất mưa dạng thanh gradient màu."""
+    rows_html = ""
+    for _, r in df.iterrows():
+        pct = int(round(float(r["rain_prob_pct"])))
+        temp_v = float(r["temp"])
+        rain_v = float(r["rain"])
+
+        if pct > 0:
+            color = _pct_to_color(pct)
+            bar_html = (
+                '<div style="display:flex; align-items:center; gap:8px;">'
+                '<div style="flex:1; background:#f0f0f0; border-radius:4px; '
+                'height:18px; overflow:hidden; min-width:80px;">'
+                f'<div style="width:{pct}%; height:100%; '
+                f'background:{color};"></div></div>'
+                f'<span style="min-width:42px; text-align:right; '
+                f'font-weight:700; color:{color}; font-size:0.85rem;">'
+                f'{pct}%</span></div>'
+            )
+        else:
+            bar_html = ('<span style="color:#c0c0c0; font-size:0.85rem;">'
+                        '—</span>')
+
+        rows_html += (
+            '<tr>'
+            f'<td style="padding:6px 10px; border-bottom:1px solid #e8f4f8; '
+            f'font-size:0.85rem; white-space:nowrap;">{r["time_str"]}</td>'
+            f'<td style="padding:6px 10px; border-bottom:1px solid #e8f4f8; '
+            f'font-size:0.85rem; white-space:nowrap;">{r["phenomenon"]}</td>'
+            f'<td style="padding:6px 10px; border-bottom:1px solid #e8f4f8; '
+            f'font-size:0.85rem; text-align:right; font-weight:600; '
+            f'color:#d32f2f;">{temp_v:.1f}</td>'
+            f'<td style="padding:6px 10px; border-bottom:1px solid #e8f4f8; '
+            f'font-size:0.85rem; text-align:right; font-weight:600; '
+            f'color:#0288d1;">{rain_v:.2f}</td>'
+            f'<td style="padding:6px 10px; border-bottom:1px solid #e8f4f8;">'
+            f'{bar_html}</td></tr>'
+        )
+
+    html = (
+        '<div style="max-height:620px; overflow-y:auto; '
+        'border:1px solid #d0e4f0; border-radius:10px; '
+        'box-shadow:0 2px 8px rgba(74,159,224,0.08);">'
+        '<table style="width:100%; border-collapse:collapse; '
+        "font-family:'Be Vietnam Pro', sans-serif;\">"
+        '<thead style="position:sticky; top:0; z-index:10; '
+        'background:linear-gradient(135deg, #4a9fe0 0%, #6dc8c2 100%); '
+        'color:#ffffff;"><tr>'
+        '<th style="padding:10px; text-align:left; font-size:0.82rem; '
+        'font-weight:700; text-transform:uppercase;">Ngày/Giờ</th>'
+        '<th style="padding:10px; text-align:left; font-size:0.82rem; '
+        'font-weight:700; text-transform:uppercase;">Hiện tượng</th>'
+        '<th style="padding:10px; text-align:right; font-size:0.82rem; '
+        'font-weight:700; text-transform:uppercase;">Nhiệt độ (°C)</th>'
+        '<th style="padding:10px; text-align:right; font-size:0.82rem; '
+        'font-weight:700; text-transform:uppercase;">Mưa 1h (mm)</th>'
+        '<th style="padding:10px; text-align:left; font-size:0.82rem; '
+        'font-weight:700; text-transform:uppercase; min-width:180px;">'
+        'Xác suất mưa</th>'
+        '</tr></thead>'
+        f'<tbody>{rows_html}</tbody></table></div>'
+    )
+    st.markdown(html, unsafe_allow_html=True)
+
+
+# ============================================================
+# PAGE CONFIG
+# ============================================================
 st.set_page_config(
     page_title="Đài KTTV TP. Cần Thơ",
     page_icon="🌦️",
@@ -57,6 +157,9 @@ st.set_page_config(
 )
 
 
+# ============================================================
+# CSS
+# ============================================================
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap');
@@ -158,6 +261,47 @@ st.markdown("""
         width: 6px; height: 6px; border-radius: 50%;
         background: #7dff8a; box-shadow: 0 0 8px #7dff8a;
         display: inline-block; margin-right: 2px;
+    }
+
+    /* Submenu sticky */
+    .st-key-kttv_submenu {
+        position: sticky !important;
+        top: 0 !important;
+        z-index: 999 !important;
+        background: linear-gradient(180deg,
+            #eaf4fb 0%, #eaf4fb 95%, rgba(234,244,251,0.95) 100%)
+            !important;
+        padding: 14px 0 12px 0 !important;
+        margin: -10px 0 10px 0 !important;
+        border-bottom: 2px solid rgba(74,159,224,0.25) !important;
+        box-shadow: 0 4px 12px rgba(74,159,224,0.08) !important;
+        backdrop-filter: blur(8px);
+    }
+
+    /* Bulletin list */
+    .bulletin-item {
+        background: #ffffff;
+        border-radius: 12px;
+        padding: 14px 20px;
+        margin-bottom: 10px;
+        border-left: 5px solid #4a9fe0;
+        box-shadow: 0 2px 8px rgba(74,159,224,0.08);
+        transition: all 0.25s ease;
+    }
+    .bulletin-item:hover {
+        box-shadow: 0 6px 18px rgba(74,159,224,0.20);
+        transform: translateX(4px);
+        border-left-color: #ea4335;
+    }
+    .bulletin-title {
+        font-size: 1rem;
+        font-weight: 700;
+        color: #0e4a7b;
+        margin: 0 0 4px 0;
+    }
+    .bulletin-meta {
+        font-size: 0.82rem;
+        color: #6d8a99;
     }
 
     .footer {
@@ -275,6 +419,7 @@ except Exception as e:
 
 
 def navigate(page: str, tab: str = None):
+    """Chuyển trang — KHÔNG đặt tên 'go' để tránh xung đột plotly.graph_objects."""
     st.session_state["page"] = page
     if tab:
         st.session_state["kttv_tab"] = tab
@@ -351,10 +496,8 @@ def render_home():
     3 mô hình tham chiếu
 </div>
 """, unsafe_allow_html=True)
-
-
-# ============================================================
-# TRANG KTTV
+    # ============================================================
+# TRANG KTTV — SUBMENU STICKY
 # ============================================================
 def render_kttv():
     st.markdown("""
@@ -369,28 +512,30 @@ def render_kttv():
         if st.button("← Trang chủ", key="btn_back_home"):
             navigate("home")
 
-    st.markdown(
-        "<div class='submenu-title'>📂 Danh mục bản tin & dự báo</div>",
-        unsafe_allow_html=True)
+    # SUBMENU STICKY
+    with st.container(key="kttv_submenu"):
+        st.markdown(
+            "<div class='submenu-title'>"
+            "📂 Danh mục bản tin & dự báo</div>",
+            unsafe_allow_html=True)
 
-    submenu = [
-        ("forecast",   "📊 Dự báo số trị"),
-        ("daily",      "📰 Bản tin hàng ngày"),
-        ("rain_storm", "⛈️ Bản tin mưa dông"),
-        ("heavy_rain", "🌧️ Bản tin mưa lớn"),
-    ]
+        submenu = [
+            ("forecast",   "📊 Dự báo số trị"),
+            ("daily",      "📰 Bản tin hàng ngày"),
+            ("rain_storm", "⛈️ Bản tin mưa dông"),
+            ("heavy_rain", "🌧️ Bản tin mưa lớn"),
+        ]
 
-    cols = st.columns(len(submenu))
-    for i, (key, label) in enumerate(submenu):
-        with cols[i]:
-            is_active = st.session_state.get("kttv_tab") == key
-            btn_type = "primary" if is_active else "secondary"
-            if st.button(label, key=f"kttv_tab_{key}",
-                         use_container_width=True, type=btn_type):
-                st.session_state["kttv_tab"] = key
-                st.rerun()
+        cols = st.columns(len(submenu))
+        for i, (key, label) in enumerate(submenu):
+            with cols[i]:
+                is_active = st.session_state.get("kttv_tab") == key
+                btn_type = "primary" if is_active else "secondary"
+                if st.button(label, key=f"kttv_tab_{key}",
+                             use_container_width=True, type=btn_type):
+                    st.session_state["kttv_tab"] = key
+                    st.rerun()
 
-    st.divider()
     tab = st.session_state.get("kttv_tab", "forecast")
 
     if tab == "forecast":
@@ -400,7 +545,7 @@ def render_kttv():
 
 
 # ============================================================
-# TRANG BẢN TIN PDF
+# TRANG BẢN TIN — LIST DỌC + PDF VIEWER
 # ============================================================
 def render_bulletins_page(category: str):
     cat_info = BULLETIN_CATEGORIES.get(category, {})
@@ -408,48 +553,76 @@ def render_bulletins_page(category: str):
     label = cat_info.get("label", category)
 
     st.subheader(f"{icon} {label}")
-    bulletins = list_bulletins(category=category, limit=20)
+    bulletins = list_bulletins(category=category, limit=50)
 
     if not bulletins:
         st.info(f"📭 Chưa có bản tin nào. Admin có thể upload bản tin tại "
                 f"**Sidebar → 🛡️ Quản trị viên → 📰 Quản lý bản tin**.")
         return
 
-    options = {b["id"]: f"{b['title']} — {b['created_at'][:16]}"
-               for b in bulletins}
-    sel_id = st.selectbox(
-        "Chọn bản tin:", options=list(options.keys()),
-        format_func=lambda x: options[x], key=f"bul_sel_{category}")
+    viewing_key = f"viewing_bulletin_{category}"
+    viewing_id = st.session_state.get(viewing_key)
 
-    if sel_id:
-        bulletin = get_bulletin(sel_id)
-        if not bulletin:
-            st.error("Không tìm thấy bản tin.")
-            return
+    st.markdown(
+        f"<div style='font-size:0.9rem; color:#6d8a99; margin-bottom:10px;'>"
+        f"📚 <b>{len(bulletins)} bản tin</b> — mới nhất ở trên cùng</div>",
+        unsafe_allow_html=True)
 
-        st.markdown(f"### {bulletin['title']}")
-        if bulletin.get("description"):
-            st.caption(bulletin["description"])
-        size_kb = (bulletin.get("file_size") or 0) / 1024
-        st.caption(f"📎 {bulletin['filename']} — {size_kb:.0f} KB — "
-                   f"📅 {bulletin['created_at'][:16]}")
+    for b in bulletins:
+        bid = b["id"]
+        size_kb = (b.get("file_size") or 0) / 1024
+        created = (b.get("created_at") or "")[:16].replace("T", " ")
 
-        try:
-            pdf_bytes = base64.b64decode(bulletin["file_data"])
-            st.download_button(
-                "📥 Tải bản tin (PDF)", data=pdf_bytes,
-                file_name=bulletin["filename"], mime="application/pdf",
-                use_container_width=True)
+        col_info, col_btn = st.columns([5, 1])
 
-            pdf_b64 = base64.b64encode(pdf_bytes).decode("ascii")
-            pdf_html = (
-                f'<iframe src="data:application/pdf;base64,{pdf_b64}" '
-                'width="100%" height="800px" '
-                'style="border:1px solid #d0e4f0; border-radius:10px;">'
-                '</iframe>')
-            st.markdown(pdf_html, unsafe_allow_html=True)
-        except Exception as e:
-            st.error(f"Lỗi hiển thị PDF: {e}")
+        with col_info:
+            st.markdown(
+                f"<div class='bulletin-item'>"
+                f"<div class='bulletin-title'>{icon} {b['title']}</div>"
+                f"<div class='bulletin-meta'>"
+                f"📅 {created} &nbsp;·&nbsp; "
+                f"📎 {b['filename']} ({size_kb:.0f} KB)"
+                f"{' &nbsp;·&nbsp; ' + b['description'] if b.get('description') else ''}"
+                f"</div></div>",
+                unsafe_allow_html=True)
+
+        with col_btn:
+            is_viewing = (viewing_id == bid)
+            btn_label = "✖ Đóng" if is_viewing else "👁 Xem"
+            btn_type = "primary" if is_viewing else "secondary"
+            if st.button(btn_label, key=f"view_bul_{bid}",
+                         use_container_width=True, type=btn_type):
+                if is_viewing:
+                    st.session_state[viewing_key] = None
+                else:
+                    st.session_state[viewing_key] = bid
+                st.rerun()
+
+        if is_viewing:
+            bulletin = get_bulletin(bid)
+            if not bulletin:
+                st.error("Không tìm thấy bản tin.")
+            else:
+                try:
+                    pdf_bytes = base64.b64decode(bulletin["file_data"])
+
+                    st.download_button(
+                        "📥 Tải bản tin (PDF)",
+                        data=pdf_bytes,
+                        file_name=bulletin["filename"],
+                        mime="application/pdf",
+                        use_container_width=True,
+                        key=f"dl_bul_{bid}")
+
+                    pdf_b64 = base64.b64encode(pdf_bytes).decode("ascii")
+                    pdf_html = (
+                        f'<iframe src="data:application/pdf;base64,'
+                        f'{pdf_b64}" width="100%" height="800px" '
+                        'style="border:1px solid #d0e4f0; '
+                        'border-radius:10px;"></iframe>')
+                    st.markdown(pdf_html, unsafe_allow_html=True)
+                except Exception as e:
+                    st.error(f"Lỗi hiển thị PDF: {e}")
 
 
 # ============================================================
@@ -679,12 +852,11 @@ def handle_forecast_run(input_mode, address, lat_input, lon_input,
         "🕐 Theo giờ", "✅ Đánh giá QCVN", "💾 Lịch sử"])
 
     # ================================================
-    # TAB 1
+    # TAB 1: BIỂU ĐỒ
     # ================================================
     with tab1:
         st.subheader("📈 Dự báo nhiệt độ và mưa")
 
-        # ---- TÍNH MEDIAN AN TOÀN ----
         has_median = False
         median_temp = None
         median_precip = None
@@ -702,14 +874,18 @@ def handle_forecast_run(input_mode, address, lat_input, lon_input,
                     median_precip = _mp
         except Exception as e:
             print(f"[MEDIAN] Lỗi: {e}")
-            median_temp = None
-            median_precip = None
 
-        fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
-                            subplot_titles=("Nhiệt độ 2m (°C)", "Mưa 1h (mm)"),
-                            vertical_spacing=0.12)
+        fig = make_subplots(
+            rows=2, cols=1, shared_xaxes=True,
+            subplot_titles=(
+                "<b style='font-size:15px; color:#0e4a7b;'>"
+                "🌡️ Nhiệt độ 2m (°C)</b>",
+                "<b style='font-size:15px; color:#0e4a7b;'>"
+                "💧 Mưa 1h (mm)</b>",
+            ),
+            vertical_spacing=0.20,
+        )
 
-        # ---- Vẽ các mô hình nhiệt độ ----
         for mk, ens_df in temp_ensembles.items():
             try:
                 stats = compute_ensemble_stats(ens_df)
@@ -735,7 +911,6 @@ def handle_forecast_run(input_mode, address, lat_input, lon_input,
             except Exception as e:
                 print(f"[TEMP-PLOT] Bỏ qua {mk}: {e}")
 
-        # ---- Median nhiệt độ ----
         if has_median and median_temp is not None and not median_temp.empty:
             try:
                 _y = pd.to_numeric(median_temp["median"], errors="coerce")
@@ -748,7 +923,6 @@ def handle_forecast_run(input_mode, address, lat_input, lon_input,
             except Exception as e:
                 print(f"[MEDIAN-TEMP] {e}")
 
-        # ---- Vẽ mưa ----
         n_p = len(precip_ensembles)
         use_bars = n_p <= BAR_MAX_MODELS
         for mk, ens_df in precip_ensembles.items():
@@ -775,7 +949,6 @@ def handle_forecast_run(input_mode, address, lat_input, lon_input,
             except Exception as e:
                 print(f"[PRECIP-PLOT] Bỏ qua {mk}: {e}")
 
-        # ---- Median mưa ----
         if has_median and median_precip is not None and not median_precip.empty:
             try:
                 _y = pd.to_numeric(median_precip["median"], errors="coerce")
@@ -796,11 +969,21 @@ def handle_forecast_run(input_mode, address, lat_input, lon_input,
             except Exception as e:
                 print(f"[MEDIAN-PRECIP] {e}")
 
-        fig.update_layout(height=760, hovermode="x unified",
-                          barmode="group", bargap=0.15, bargroupgap=0.05,
-                          legend=dict(orientation="h", yanchor="bottom",
-                                      y=1.02),
-                          margin=dict(l=40, r=20, t=80, b=40))
+        fig.update_layout(
+            height=820, hovermode="x unified",
+            barmode="group", bargap=0.15, bargroupgap=0.05,
+            legend=dict(
+                orientation="h", yanchor="bottom", y=1.15,
+                xanchor="center", x=0.5,
+                bgcolor="rgba(255,255,255,0.92)",
+                bordercolor="#d0e4f0", borderwidth=1,
+                font=dict(size=11)),
+            margin=dict(l=50, r=30, t=150, b=50),
+        )
+        for ann in fig.layout.annotations:
+            if ann.text and ("Nhiệt độ" in ann.text or "Mưa 1h" in ann.text):
+                ann.update(yshift=15, font=dict(size=15))
+
         st.plotly_chart(fig, use_container_width=True)
 
         if has_median:
@@ -844,8 +1027,9 @@ def handle_forecast_run(input_mode, address, lat_input, lon_input,
                 c3.metric("💧 Tổng mưa (max)", f"{max(r_tot):.1f} mm")
             if r_pk:
                 c4.metric("☔ Đỉnh mưa 1h", f"{max(r_pk):.1f} mm")
-                    # ================================================
-    # TAB 2
+
+    # ================================================
+    # TAB 2: SO SÁNH
     # ================================================
     with tab2:
         cv = st.radio("Chọn biến:", ["🌡️ Nhiệt độ", "💧 Lượng mưa"],
@@ -877,7 +1061,7 @@ def handle_forecast_run(input_mode, address, lat_input, lon_input,
             st.plotly_chart(fig_cmp, use_container_width=True)
 
     # ================================================
-    # TAB 3
+    # TAB 3: THEO GIỜ (bỏ cột 24h + gradient màu)
     # ================================================
     with tab3:
         st.subheader("🕐 Chi tiết theo giờ")
@@ -930,15 +1114,11 @@ def handle_forecast_run(input_mode, address, lat_input, lon_input,
                         r["time"].hour, r["rain"], r["temp"]), axis=1)
                 df["time_str"] = df["time"].dt.strftime("%d/%m %H:%M")
 
-                df_24h = df.set_index("time")["rain"].rolling("24h").sum()
-                df["rain_24h"] = df_24h.values
-
                 disp = pd.DataFrame({
                     "Ngày/Giờ": df["time_str"].values,
                     "Hiện tượng": df["phenomenon"].values,
                     "Nhiệt độ (°C)": df["temp"].round(1).values,
                     "Mưa 1h (mm)": df["rain"].round(2).values,
-                    "Mưa 24h (mm)": df["rain_24h"].round(1).values,
                     "Xác suất mưa (%)": (df["rain_prob"] * 100)
                         .round(0).astype(int).values,
                 })
@@ -946,8 +1126,15 @@ def handle_forecast_run(input_mode, address, lat_input, lon_input,
                 st.caption(f"📊 {len(disp)} giờ — từ "
                            f"**{df['time'].min().strftime('%d/%m %H:%M')}** "
                            f"đến **{df['time'].max().strftime('%d/%m %H:%M')}**")
-                st.dataframe(disp, use_container_width=True,
-                             hide_index=True, height=600)
+
+                render_df = pd.DataFrame({
+                    "time_str": df["time_str"].values,
+                    "phenomenon": df["phenomenon"].values,
+                    "temp": df["temp"].round(1).values,
+                    "rain": df["rain"].round(2).values,
+                    "rain_prob_pct": (df["rain_prob"] * 100).round(0).values,
+                })
+                _render_hourly_table(render_df)
 
                 csv_buf = io.StringIO()
                 disp.to_csv(csv_buf, index=False, encoding="utf-8-sig")
