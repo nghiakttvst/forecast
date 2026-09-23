@@ -1,37 +1,25 @@
-﻿# GeoJSON — tải từ GitHub Releases
-geojson/
+﻿geojson/
+backup_geojson/
 *.geojson
 *.pkl
-
-# Cache & data
+Backup/
+backup/
+*.bak
+*.rar
+*.zip
 data/
 __pycache__/
 *.pyc
 *.pyo
 *.db
 *.sqlite
-
-# IDE
 .vscode/
 .idea/
-
-# OS
 .DS_Store
 Thumbs.db
-
-# Secrets
 .streamlit/secrets.toml
-
-# Backup
-backup/
-Backup/
-*.bak
-
-# Test files
+.env
 test_*.py
-build_cache.py
 check_*.py
-diagnose.py
-fix_encoding.py
-migrate.py
-run.bat
+*_bk.py
+appbk.py

@@ -1,8 +1,9 @@
 """
-Module lưu trữ dự báo, đánh giá, vị trí ghim — dùng db.py (Supabase/SQLite).
+Module lưu trữ dự báo, đánh giá, ghim, bản tin.
 """
 
 import json
+import base64
 from datetime import datetime
 from typing import Dict, List
 import pandas as pd
@@ -13,50 +14,44 @@ from db import get_connection, execute, fetchall, fetchone, is_postgres
 def _ensure_db():
     with get_connection() as conn:
         if is_postgres():
-            execute(conn, """
-                CREATE TABLE IF NOT EXISTS forecasts (
+            for sql in [
+                """CREATE TABLE IF NOT EXISTS forecasts (
                     id SERIAL PRIMARY KEY, created_at TEXT NOT NULL,
                     location TEXT, lat REAL, lon REAL,
                     model_key TEXT, variable TEXT,
-                    horizon_days INTEGER, summary_json TEXT)
-            """)
-            execute(conn, """
-                CREATE TABLE IF NOT EXISTS evaluations (
+                    horizon_days INTEGER, summary_json TEXT)""",
+                """CREATE TABLE IF NOT EXISTS evaluations (
                     id SERIAL PRIMARY KEY, created_at TEXT NOT NULL,
                     location TEXT, lat REAL, lon REAL,
                     model_key TEXT, variable TEXT,
                     ME REAL, MAE REAL, RMSE REAL, Bias REAL,
                     PC REAL, Scf_mean REAL, pct_within_qcvn REAL,
-                    n_points INTEGER)
-            """)
-            execute(conn, """
-                CREATE TABLE IF NOT EXISTS favorites (
+                    n_points INTEGER)""",
+                """CREATE TABLE IF NOT EXISTS favorites (
                     id SERIAL PRIMARY KEY, created_at TEXT NOT NULL,
                     address TEXT NOT NULL, display TEXT NOT NULL,
-                    lat REAL, lon REAL)
-            """)
+                    lat REAL, lon REAL)""",
+            ]:
+                execute(conn, sql)
         else:
-            execute(conn, """
-                CREATE TABLE IF NOT EXISTS forecasts (
+            for sql in [
+                """CREATE TABLE IF NOT EXISTS forecasts (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    created_at TEXT NOT NULL, location TEXT, lat REAL, lon REAL,
-                    model_key TEXT, variable TEXT, horizon_days INTEGER,
-                    summary_json TEXT)
-            """)
-            execute(conn, """
-                CREATE TABLE IF NOT EXISTS evaluations (
+                    created_at TEXT NOT NULL, location TEXT, lat REAL,
+                    lon REAL, model_key TEXT, variable TEXT,
+                    horizon_days INTEGER, summary_json TEXT)""",
+                """CREATE TABLE IF NOT EXISTS evaluations (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    created_at TEXT NOT NULL, location TEXT, lat REAL, lon REAL,
-                    model_key TEXT, variable TEXT, ME REAL, MAE REAL, RMSE REAL,
-                    Bias REAL, PC REAL, Scf_mean REAL, pct_within_qcvn REAL,
-                    n_points INTEGER)
-            """)
-            execute(conn, """
-                CREATE TABLE IF NOT EXISTS favorites (
+                    created_at TEXT NOT NULL, location TEXT, lat REAL,
+                    lon REAL, model_key TEXT, variable TEXT,
+                    ME REAL, MAE REAL, RMSE REAL, Bias REAL, PC REAL,
+                    Scf_mean REAL, pct_within_qcvn REAL, n_points INTEGER)""",
+                """CREATE TABLE IF NOT EXISTS favorites (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     created_at TEXT NOT NULL, address TEXT NOT NULL,
-                    display TEXT NOT NULL, lat REAL, lon REAL)
-            """)
+                    display TEXT NOT NULL, lat REAL, lon REAL)""",
+            ]:
+                execute(conn, sql)
 
 
 # ============================================================
@@ -119,9 +114,8 @@ def load_evaluations(location=None, model_key=None, limit=500) -> pd.DataFrame:
 def save_favorite(address: str, display: str, lat: float, lon: float) -> bool:
     _ensure_db()
     with get_connection() as conn:
-        existing = fetchone(conn,
-            "SELECT id FROM favorites WHERE display = ?", (display,))
-        if existing:
+        if fetchone(conn, "SELECT id FROM favorites WHERE display = ?",
+                    (display,)):
             return False
         execute(conn, """
             INSERT INTO favorites (created_at, address, display, lat, lon)
@@ -142,4 +136,70 @@ def delete_favorite(fav_id: int) -> bool:
     _ensure_db()
     with get_connection() as conn:
         execute(conn, "DELETE FROM favorites WHERE id = ?", (fav_id,))
+        return True
+
+
+# ============================================================
+# BẢN TIN (BULLETINS)
+# ============================================================
+def save_bulletin(category: str, title: str, description: str,
+                  filename: str, file_bytes: bytes,
+                  uploader: str = "admin") -> int:
+    _ensure_db()
+    file_b64 = base64.b64encode(file_bytes).decode("ascii")
+    file_size = len(file_bytes)
+
+    with get_connection() as conn:
+        if is_postgres():
+            cur = execute(conn, """
+                INSERT INTO bulletins
+                (created_at, category, title, description,
+                 filename, file_size, file_data, uploader)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                RETURNING id
+            """, (datetime.utcnow().isoformat(), category, title,
+                  description, filename, file_size, file_b64, uploader))
+            row = cur.fetchone()
+            return row["id"] if row else 0
+        else:
+            execute(conn, """
+                INSERT INTO bulletins
+                (created_at, category, title, description,
+                 filename, file_size, file_data, uploader)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (datetime.utcnow().isoformat(), category, title,
+                  description, filename, file_size, file_b64, uploader))
+            cur = execute(conn, "SELECT last_insert_rowid() as id")
+            row = cur.fetchone()
+            return row["id"] if row else 0
+
+
+def list_bulletins(category: str = None, limit: int = 50) -> list:
+    _ensure_db()
+    with get_connection() as conn:
+        if category:
+            return fetchall(conn, """
+                SELECT id, created_at, category, title, description,
+                       filename, file_size, uploader
+                FROM bulletins WHERE category = ?
+                ORDER BY created_at DESC LIMIT ?
+            """, (category, limit))
+        return fetchall(conn, """
+            SELECT id, created_at, category, title, description,
+                   filename, file_size, uploader
+            FROM bulletins ORDER BY created_at DESC LIMIT ?
+        """, (limit,))
+
+
+def get_bulletin(bulletin_id: int):
+    _ensure_db()
+    with get_connection() as conn:
+        return fetchone(conn, "SELECT * FROM bulletins WHERE id = ?",
+                        (bulletin_id,))
+
+
+def delete_bulletin(bulletin_id: int) -> bool:
+    _ensure_db()
+    with get_connection() as conn:
+        execute(conn, "DELETE FROM bulletins WHERE id = ?", (bulletin_id,))
         return True

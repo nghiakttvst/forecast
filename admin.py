@@ -1,12 +1,12 @@
 """
-Trang Admin: quản lý users, xem thống kê truy cập.
-Không yêu cầu login — bảo vệ bằng password trong app.py.
+Admin: user + thống kê + bản tin.
 """
 
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 
+from config import BULLETIN_CATEGORIES, BULLETIN_MAX_SIZE_MB
 from auth import (
     list_users, register_user, set_user_active,
     delete_user, admin_reset_password,
@@ -14,27 +14,23 @@ from auth import (
 from analytics import (
     get_stats, get_visits_by_day, get_recent_visits, get_top_pages,
 )
+from storage import (
+    save_bulletin, list_bulletins, delete_bulletin,
+)
 
 
 def render_admin_panel(current_user: dict):
-    """Render trang admin (current_user là dict giả từ app.py)."""
     st.markdown("## 🛡️ Bảng điều khiển Admin")
-    st.caption("Trang quản trị nội bộ — Đài KTTV TP. Cần Thơ")
 
-    tab_a, tab_b, tab_c, tab_d = st.tabs([
-        "📊 Thống kê",
-        "👥 Quản lý user",
-        "🔑 Xem mật khẩu",
-        "➕ Thêm user",
+    tab_a, tab_b, tab_c, tab_d, tab_e = st.tabs([
+        "📊 Thống kê", "👥 Quản lý user", "🔑 Mật khẩu",
+        "➕ Thêm user", "📰 Quản lý bản tin",
     ])
 
-    # ============================================================
-    # TAB A: THỐNG KÊ
-    # ============================================================
+    # TAB A
     with tab_a:
         st.subheader("📊 Thống kê tổng quan")
         stats = get_stats()
-
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("👁️ Tổng lượt xem", f"{stats['total_views']:,}")
         c2.metric("👤 Phiên duy nhất", f"{stats['unique_sessions']:,}")
@@ -45,12 +41,12 @@ def render_admin_panel(current_user: dict):
         c5.metric("📆 Xem tuần", f"{stats['views_week']:,}")
         c6.metric("👥 Khách tuần", f"{stats['unique_week']:,}")
         c7.metric("🗓️ Xem tháng", f"{stats['views_month']:,}")
-        c8.metric("🧑 Tài khoản", f"{stats['active_users']}/{stats['total_users']}")
+        c8.metric("🧑 Tài khoản",
+                  f"{stats['active_users']}/{stats['total_users']}")
 
         st.divider()
         st.subheader("📈 Lượt truy cập 30 ngày qua")
         data = get_visits_by_day(30)
-
         if data:
             df = pd.DataFrame(data)
             df["day"] = pd.to_datetime(df["day"])
@@ -61,186 +57,167 @@ def render_admin_panel(current_user: dict):
                 x=df["day"], y=df["unique_sessions"],
                 name="Khách duy nhất", mode="lines+markers",
                 line=dict(color="#ea4335", width=2), yaxis="y2"))
-            fig.update_layout(
-                height=420, hovermode="x unified",
-                yaxis=dict(title="Lượt xem"),
-                yaxis2=dict(title="Khách", overlaying="y", side="right"),
-                legend=dict(orientation="h", y=1.1))
+            fig.update_layout(height=400, hovermode="x unified",
+                              yaxis=dict(title="Lượt xem"),
+                              yaxis2=dict(title="Khách",
+                                          overlaying="y", side="right"),
+                              legend=dict(orientation="h", y=1.1))
             st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info("Chưa có dữ liệu.")
 
-        st.subheader("🔥 Trang xem nhiều nhất")
-        top = get_top_pages(10)
-        if top:
-            st.dataframe(pd.DataFrame(top).rename(
-                columns={"page": "Trang", "views": "Lượt xem"}),
-                use_container_width=True, hide_index=True)
-        else:
-            st.info("Chưa có dữ liệu.")
-
-        st.subheader("🕒 Lượt truy cập gần đây (100 bản ghi)")
-        recent = get_recent_visits(100)
+        st.subheader("🕒 Lượt truy cập gần đây")
+        recent = get_recent_visits(50)
         if recent:
-            st.dataframe(
-                pd.DataFrame(recent)[["created_at", "username", "page", "action"]]
-                .rename(columns={"created_at": "Thời gian", "username": "User",
-                                 "page": "Trang", "action": "HĐ"}),
-                use_container_width=True, hide_index=True, height=400)
-        else:
-            st.info("Chưa có lượt truy cập.")
+            st.dataframe(pd.DataFrame(recent), use_container_width=True,
+                         hide_index=True, height=300)
 
-    # ============================================================
-    # TAB B: QUẢN LÝ USER
-    # ============================================================
+    # TAB B
     with tab_b:
-        st.subheader("👥 Danh sách người dùng")
+        st.subheader("👥 Danh sách user")
         users = list_users()
-
-        if not users:
-            st.info("Chưa có user nào.")
-        else:
+        if users:
             df = pd.DataFrame(users)
             df["is_active"] = df["is_active"].apply(
-                lambda x: "✅ Hoạt động" if x else "🚫 Đã khóa")
-
-            st.dataframe(
-                df[["id", "username", "full_name", "email", "role",
-                    "is_active", "login_count", "last_login", "created_at"]]
-                .rename(columns={
-                    "id": "ID", "username": "Tên ĐN", "full_name": "Họ tên",
-                    "email": "Email", "role": "Vai trò",
-                    "is_active": "Trạng thái", "login_count": "Lần ĐN",
-                    "last_login": "ĐN cuối", "created_at": "Ngày tạo"}),
-                use_container_width=True, hide_index=True)
+                lambda x: "✅" if x else "🚫")
+            st.dataframe(df[["id", "username", "full_name", "email",
+                             "role", "is_active", "login_count",
+                             "last_login"]],
+                         use_container_width=True, hide_index=True)
 
             st.divider()
-            st.subheader("⚙️ Thao tác")
-
-            user_options = {
-                u["id"]: f"{u['username']} ({u.get('full_name', '')})"
-                for u in users
-            }
-
-            col1, col2, col3 = st.columns(3)
-
-            with col1:
-                st.markdown("**Khóa / Mở khóa**")
-                sel_id = st.selectbox("Chọn user:",
-                                      list(user_options.keys()),
-                                      format_func=lambda x: user_options[x],
-                                      key="admin_toggle_sel")
-                u = next((x for x in users if x["id"] == sel_id), None)
+            u_opts = {u["id"]: f"{u['username']} ({u.get('full_name','')})"
+                      for u in users}
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                sel = st.selectbox("Khóa/Mở:", list(u_opts.keys()),
+                                   format_func=lambda x: u_opts[x],
+                                   key="adm_toggle")
+                u = next((x for x in users if x["id"] == sel), None)
                 if u:
-                    current = bool(u["is_active"])
-                    label = "🚫 Khóa" if current else "✅ Mở khóa"
-                    if st.button(label, key="btn_toggle"):
-                        set_user_active(sel_id, not current)
-                        st.success("Đã đổi trạng thái.")
+                    cur = bool(u["is_active"])
+                    if st.button("🚫 Khóa" if cur else "✅ Mở",
+                                 key="adm_btn_t"):
+                        set_user_active(sel, not cur)
                         st.rerun()
-
-            with col2:
-                st.markdown("**Xóa user**")
-                del_id = st.selectbox("Chọn user để xóa:",
-                                      list(user_options.keys()),
-                                      format_func=lambda x: user_options[x],
-                                      key="admin_del_sel")
+            with c2:
+                del_id = st.selectbox("Xóa:", list(u_opts.keys()),
+                                      format_func=lambda x: u_opts[x],
+                                      key="adm_del")
                 u_del = next((x for x in users if x["id"] == del_id), None)
-                if u_del and u_del["username"] == "admin":
-                    st.warning("Không thể xóa admin.")
-                else:
-                    if st.button("🗑️ Xóa vĩnh viễn", key="btn_del"):
-                        if u_del:
-                            delete_user(del_id)
-                            st.success(f"Đã xóa {u_del['username']}")
-                            st.rerun()
+                if u_del and u_del["username"] != "admin":
+                    if st.button("🗑️ Xóa", key="adm_btn_d"):
+                        delete_user(del_id)
+                        st.rerun()
+            with c3:
+                rst_id = st.selectbox("Reset MK:", list(u_opts.keys()),
+                                      format_func=lambda x: u_opts[x],
+                                      key="adm_rst")
+                np = st.text_input("MK mới:", type="password", key="adm_np")
+                if st.button("🔑 Đặt lại", key="adm_btn_r"):
+                    if np:
+                        r = admin_reset_password(rst_id, np)
+                        (st.success if r["success"]
+                         else st.error)(r["message"])
 
-            with col3:
-                st.markdown("**Reset mật khẩu user**")
-                rst_id = st.selectbox("Chọn user:",
-                                      list(user_options.keys()),
-                                      format_func=lambda x: user_options[x],
-                                      key="admin_reset_sel")
-                new_pwd = st.text_input("Mật khẩu mới:", type="password",
-                                        key="admin_new_pwd")
-                if st.button("🔑 Đặt lại", key="btn_reset_pwd"):
-                    if new_pwd:
-                        r = admin_reset_password(rst_id, new_pwd)
-                        if r["success"]:
-                            st.success(r["message"])
-                        else:
-                            st.error(r["message"])
-                    else:
-                        st.warning("Nhập mật khẩu mới.")
-
-    # ============================================================
-    # TAB C: XEM MẬT KHẨU
-    # ============================================================
+    # TAB C
     with tab_c:
-        st.subheader("🔑 Danh sách mật khẩu người dùng")
-        st.warning(
-            "⚠️ **Bảo mật:** Bảng này hiển thị **mật khẩu gốc** của user. "
-            "Chỉ admin truy cập. Không chia sẻ ảnh chụp màn hình."
-        )
-
+        st.subheader("🔑 Mật khẩu người dùng")
+        st.warning("⚠️ Chỉ admin xem được.")
         users = list_users()
-        if not users:
-            st.info("Chưa có user.")
-        else:
-            rows = []
-            for u in users:
-                rows.append({
-                    "ID": u["id"],
-                    "Tên đăng nhập": u["username"],
-                    "🔑 Mật khẩu": u.get("password_plain") or "(chưa có)",
-                    "Họ tên": u.get("full_name", ""),
-                    "Email": u.get("email", ""),
-                    "Vai trò": u["role"],
-                    "Trạng thái": "✅" if u["is_active"] else "🚫",
-                    "Ngày tạo": (u.get("created_at") or "")[:19].replace("T", " "),
-                })
+        if users:
+            rows = [{
+                "ID": u["id"], "Tên ĐN": u["username"],
+                "🔑 Mật khẩu": u.get("password_plain") or "(chưa có)",
+                "Họ tên": u.get("full_name", ""),
+                "Vai trò": u["role"],
+            } for u in users]
+            st.dataframe(pd.DataFrame(rows), use_container_width=True,
+                         hide_index=True)
 
-            df = pd.DataFrame(rows)
-            st.dataframe(df, use_container_width=True,
-                         hide_index=True, height=500)
-
-            csv_buf = df.to_csv(index=False)
-            st.download_button(
-                "📥 Tải danh sách (CSV)",
-                data=csv_buf.encode("utf-8-sig"),
-                file_name="users_passwords.csv",
-                mime="text/csv",
-            )
-
-            with st.expander("📊 Thống kê nhanh"):
-                c1, c2, c3 = st.columns(3)
-                c1.metric("Tổng user", len(users))
-                c2.metric("Admin", sum(1 for u in users if u["role"] == "admin"))
-                c3.metric("Đang hoạt động",
-                          sum(1 for u in users if u["is_active"]))
-
-    # ============================================================
-    # TAB D: THÊM USER
-    # ============================================================
+    # TAB D
     with tab_d:
-        st.subheader("➕ Thêm người dùng mới")
-        with st.form("form_add_user"):
-            col1, col2 = st.columns(2)
-            with col1:
-                nu = st.text_input("Tên đăng nhập *", key="nu_user")
-                np = st.text_input("Mật khẩu *", type="password", key="nu_pwd")
-                ne = st.text_input("Email", key="nu_email")
-            with col2:
-                nf = st.text_input("Họ và tên", key="nu_fullname")
-                nr = st.selectbox("Vai trò", ["user", "admin"], key="nu_role")
-
-            if st.form_submit_button("✅ Tạo tài khoản"):
+        st.subheader("➕ Thêm user")
+        with st.form("adm_add_user"):
+            c1, c2 = st.columns(2)
+            with c1:
+                nu = st.text_input("Tên ĐN *", key="a_nu")
+                np = st.text_input("Mật khẩu *", type="password", key="a_np")
+                ne = st.text_input("Email", key="a_ne")
+            with c2:
+                nf = st.text_input("Họ tên", key="a_nf")
+                nr = st.selectbox("Vai trò", ["user", "admin"], key="a_nr")
+            if st.form_submit_button("✅ Tạo"):
                 if not nu or not np:
-                    st.error("Bắt buộc nhập tên ĐN và mật khẩu.")
+                    st.error("Nhập đủ tên ĐN và MK.")
                 else:
                     r = register_user(nu, np, ne, nf, nr)
+                    (st.success if r["success"]
+                     else st.error)(r["message"])
                     if r["success"]:
-                        st.success(r["message"])
                         st.rerun()
+
+    # TAB E: BẢN TIN
+    with tab_e:
+        st.subheader("📰 Upload & Quản lý bản tin")
+
+        with st.form("adm_upload_bulletin"):
+            cat = st.selectbox(
+                "Loại bản tin:",
+                options=list(BULLETIN_CATEGORIES.keys()),
+                format_func=lambda k: f"{BULLETIN_CATEGORIES[k]['icon']} "
+                                       f"{BULLETIN_CATEGORIES[k]['label']}",
+            )
+            title = st.text_input("Tiêu đề *")
+            desc = st.text_area("Mô tả ngắn", height=80)
+            uploaded = st.file_uploader("Chọn file PDF *", type=["pdf"])
+
+            if st.form_submit_button("📤 Upload bản tin"):
+                if not title:
+                    st.error("Nhập tiêu đề.")
+                elif not uploaded:
+                    st.error("Chọn file PDF.")
+                else:
+                    fb = uploaded.getvalue()
+                    size_mb = len(fb) / 1e6
+                    if size_mb > BULLETIN_MAX_SIZE_MB:
+                        st.error(f"File quá lớn ({size_mb:.1f}MB)")
                     else:
-                        st.error(r["message"])
+                        try:
+                            bid = save_bulletin(
+                                category=cat, title=title, description=desc,
+                                filename=uploaded.name, file_bytes=fb)
+                            st.success(f"✅ Đã upload ID={bid}")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Lỗi: {e}")
+
+        st.divider()
+        st.subheader("📚 Danh sách bản tin")
+        cat_filter = st.selectbox(
+            "Lọc:",
+            options=["all"] + list(BULLETIN_CATEGORIES.keys()),
+            format_func=lambda k: "Tất cả" if k == "all"
+            else BULLETIN_CATEGORIES[k]["label"],
+            key="adm_cat_filter",
+        )
+
+        bulletins = list_bulletins(
+            category=None if cat_filter == "all" else cat_filter, limit=50)
+
+        if not bulletins:
+            st.info("Chưa có bản tin nào.")
+        else:
+            for b in bulletins:
+                ci = BULLETIN_CATEGORIES.get(b["category"], {})
+                icon = ci.get("icon", "📄")
+                lbl = ci.get("label", b["category"])
+                size_kb = (b.get("file_size") or 0) / 1024
+                with st.expander(
+                    f"{icon} **{b['title']}** — {lbl} — "
+                    f"{b['created_at'][:16]}"
+                ):
+                    st.write(f"**ID:** {b['id']}")
+                    st.write(f"**Mô tả:** {b.get('description') or '(không)'}")
+                    st.write(f"**File:** {b['filename']} ({size_kb:.0f} KB)")
+                    if st.button("🗑️ Xóa", key=f"del_bul_{b['id']}"):
+                        delete_bulletin(b["id"])
+                        st.rerun()
