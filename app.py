@@ -1,4 +1,4 @@
-"""
+﻿"""
 Đài KTTV TP. Cần Thơ — Ứng dụng dự báo đa mô hình
 """
 
@@ -274,7 +274,7 @@ except Exception as e:
     print(f"[WIDGET] {e}")
 
 
-def go(page: str, tab: str = None):
+def navigate(page: str, tab: str = None):
     st.session_state["page"] = page
     if tab:
         st.session_state["kttv_tab"] = tab
@@ -311,7 +311,7 @@ def render_home():
 """, unsafe_allow_html=True)
         if st.button("🚪 Vào Dự báo Khí tượng", key="btn_go_kttv",
                      use_container_width=True, type="primary"):
-            go("kttv", "forecast")
+            navigate("kttv", "forecast")
 
     with c2:
         st.markdown("""
@@ -326,7 +326,7 @@ def render_home():
 """, unsafe_allow_html=True)
         if st.button("🚪 Vào Dự báo Thủy văn", key="btn_go_tv",
                      use_container_width=True):
-            go("thuyvan")
+            navigate("thuyvan")
 
     with c3:
         st.markdown("""
@@ -341,7 +341,7 @@ def render_home():
 """, unsafe_allow_html=True)
         if st.button("🚪 Xem Mạng lưới & Dữ liệu", key="btn_go_ml",
                      use_container_width=True):
-            go("network")
+            navigate("network")
 
     st.divider()
     st.markdown("""
@@ -367,7 +367,7 @@ def render_kttv():
     cback, _ = st.columns([1, 5])
     with cback:
         if st.button("← Trang chủ", key="btn_back_home"):
-            go("home")
+            navigate("home")
 
     st.markdown(
         "<div class='submenu-title'>📂 Danh mục bản tin & dự báo</div>",
@@ -465,7 +465,7 @@ def render_placeholder(title: str, icon: str, message: str):
     cback, _ = st.columns([1, 5])
     with cback:
         if st.button("← Trang chủ", key=f"back_{title}"):
-            go("home")
+            navigate("home")
 
     st.info(f"🚧 {message}")
     st.markdown("""
@@ -1059,7 +1059,7 @@ elif page == "kttv":
                 st.rerun()
         st.divider()
         if st.button("← Trang chủ", use_container_width=True, key="sb_home"):
-            go("home")
+            navigate("home")
 
 
 if (st.session_state.get("show_admin")
