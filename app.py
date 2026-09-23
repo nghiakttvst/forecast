@@ -114,9 +114,7 @@ st.markdown("""
     h1 { font-size: 1.5rem !important; color: #0e4a7b !important; }
     h2, h3 { color: #145a92 !important; }
 
-    .stButton > button {
-        border-radius: 10px; transition: all 0.25s ease;
-    }
+    .stButton > button { border-radius: 10px; transition: all 0.25s ease; }
     .stButton > button:hover { transform: translateY(-1px); }
 
     .zone-card {
@@ -138,9 +136,7 @@ st.markdown("""
         font-size: 1.3rem; font-weight: 800; color: #0e4a7b;
         margin: 8px 0 6px 0; text-transform: uppercase; letter-spacing: 1px;
     }
-    .zone-desc {
-        font-size: 0.9rem; color: #455a64; line-height: 1.5; margin-top: 6px;
-    }
+    .zone-desc { font-size: 0.9rem; color: #455a64; line-height: 1.5; }
 
     .submenu-title {
         font-size: 1.05rem; font-weight: 700; color: #0e4a7b;
@@ -233,6 +229,7 @@ for k, v in _defaults.items():
 
 
 def filter_ensemble_from_run(ens_dict: dict) -> dict:
+    """Lọc ensemble từ model run time — an toàn."""
     out = {}
     for mk, df in ens_dict.items():
         if df is None or df.empty:
@@ -241,6 +238,9 @@ def filter_ensemble_from_run(ens_dict: dict) -> dict:
         try:
             run_utc = get_model_run_time(mk)
             run_vn = run_utc.astimezone(_VN_TZ).replace(tzinfo=None)
+            if not isinstance(df.index, pd.DatetimeIndex):
+                out[mk] = df
+                continue
             filt = df[df.index >= run_vn]
             out[mk] = filt if not filt.empty else df
         except Exception:
@@ -279,7 +279,9 @@ def go(page: str, tab: str = None):
     if tab:
         st.session_state["kttv_tab"] = tab
     st.rerun()
-    # ============================================================
+
+
+# ============================================================
 # TRANG CHỦ
 # ============================================================
 def render_home():
@@ -676,93 +678,128 @@ def handle_forecast_run(input_mode, address, lat_input, lon_input,
         "📈 Biểu đồ dự báo", "📊 So sánh mô hình",
         "🕐 Theo giờ", "✅ Đánh giá QCVN", "💾 Lịch sử"])
 
+    # ================================================
     # TAB 1
+    # ================================================
     with tab1:
         st.subheader("📈 Dự báo nhiệt độ và mưa")
 
+        # ---- TÍNH MEDIAN AN TOÀN ----
         has_median = False
         median_temp = None
         median_precip = None
         try:
             if len(temp_ensembles) >= 2:
-                median_temp = compute_median_ensemble(temp_ensembles)
-                has_median = True
+                _mt = compute_median_ensemble(temp_ensembles)
+                if (_mt is not None and not _mt.empty
+                        and "median" in _mt.columns):
+                    median_temp = _mt
+                    has_median = True
             if len(precip_ensembles) >= 2:
-                median_precip = compute_median_ensemble(precip_ensembles)
+                _mp = compute_median_ensemble(precip_ensembles)
+                if (_mp is not None and not _mp.empty
+                        and "median" in _mp.columns):
+                    median_precip = _mp
         except Exception as e:
-            print(f"[MEDIAN] {e}")
+            print(f"[MEDIAN] Lỗi: {e}")
+            median_temp = None
+            median_precip = None
 
         fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
                             subplot_titles=("Nhiệt độ 2m (°C)", "Mưa 1h (mm)"),
                             vertical_spacing=0.12)
 
+        # ---- Vẽ các mô hình nhiệt độ ----
         for mk, ens_df in temp_ensembles.items():
-            stats = compute_ensemble_stats(ens_df)
-            if stats.empty:
-                continue
-            color = ALL_MODELS[mk]["color"]
-            label = ALL_MODELS[mk]["label"]
-            rgb = tuple(int(color.lstrip("#")[i:i+2], 16) for i in (0, 2, 4))
-            fig.add_trace(go.Scatter(
-                x=stats.index, y=stats["p90"], mode="lines",
-                line=dict(width=0), showlegend=False, hoverinfo="skip"),
-                row=1, col=1)
-            fig.add_trace(go.Scatter(
-                x=stats.index, y=stats["p10"], mode="lines",
-                line=dict(width=0), fill="tonexty",
-                fillcolor=f"rgba({rgb[0]},{rgb[1]},{rgb[2]},0.15)",
-                name=f"{label} (10–90%)"), row=1, col=1)
-            fig.add_trace(go.Scatter(
-                x=stats.index, y=stats["mean"], mode="lines",
-                line=dict(color=color, width=2),
-                name=f"{label} (TB)"), row=1, col=1)
-
-        if has_median and median_temp is not None and not median_temp.empty:
-            fig.add_trace(go.Scatter(
-                x=median_temp.index, y=median_temp["median"], mode="lines",
-                line=dict(color="#000000", width=3, dash="dash"),
-                name="🌟 Trung vị tổ hợp (5 mô hình)"), row=1, col=1)
-
-        n_p = len(precip_ensembles)
-        use_bars = n_p <= BAR_MAX_MODELS
-        for mk, ens_df in precip_ensembles.items():
-            stats = compute_ensemble_stats(ens_df)
-            if stats.empty:
-                continue
-            color = ALL_MODELS[mk]["color"]
-            if use_bars:
-                upper = (stats["p90"] - stats["mean"]).clip(lower=0)
-                lower = (stats["mean"] - stats["p10"]).clip(lower=0)
-                fig.add_trace(go.Bar(
-                    x=stats.index, y=stats["mean"],
-                    marker=dict(color=color),
-                    error_y=dict(type="data", symmetric=False,
-                                 array=upper, arrayminus=lower,
-                                 color=color, thickness=1.2, width=0),
-                    showlegend=False), row=2, col=1)
-            else:
+            try:
+                stats = compute_ensemble_stats(ens_df)
+                if stats.empty or "mean" not in stats.columns:
+                    continue
+                color = ALL_MODELS[mk]["color"]
+                label = ALL_MODELS[mk]["label"]
+                rgb = tuple(int(color.lstrip("#")[i:i+2], 16)
+                            for i in (0, 2, 4))
+                fig.add_trace(go.Scatter(
+                    x=stats.index, y=stats["p90"], mode="lines",
+                    line=dict(width=0), showlegend=False, hoverinfo="skip"),
+                    row=1, col=1)
+                fig.add_trace(go.Scatter(
+                    x=stats.index, y=stats["p10"], mode="lines",
+                    line=dict(width=0), fill="tonexty",
+                    fillcolor=f"rgba({rgb[0]},{rgb[1]},{rgb[2]},0.15)",
+                    name=f"{label} (10–90%)"), row=1, col=1)
                 fig.add_trace(go.Scatter(
                     x=stats.index, y=stats["mean"], mode="lines",
                     line=dict(color=color, width=2),
-                    showlegend=False), row=2, col=1)
+                    name=f"{label} (TB)"), row=1, col=1)
+            except Exception as e:
+                print(f"[TEMP-PLOT] Bỏ qua {mk}: {e}")
 
+        # ---- Median nhiệt độ ----
+        if has_median and median_temp is not None and not median_temp.empty:
+            try:
+                _y = pd.to_numeric(median_temp["median"], errors="coerce")
+                _mask = _y.notna()
+                if _mask.any():
+                    fig.add_trace(go.Scatter(
+                        x=median_temp.index[_mask], y=_y[_mask], mode="lines",
+                        line=dict(color="#000000", width=3, dash="dash"),
+                        name="🌟 Trung vị tổ hợp (5 mô hình)"), row=1, col=1)
+            except Exception as e:
+                print(f"[MEDIAN-TEMP] {e}")
+
+        # ---- Vẽ mưa ----
+        n_p = len(precip_ensembles)
+        use_bars = n_p <= BAR_MAX_MODELS
+        for mk, ens_df in precip_ensembles.items():
+            try:
+                stats = compute_ensemble_stats(ens_df)
+                if stats.empty or "mean" not in stats.columns:
+                    continue
+                color = ALL_MODELS[mk]["color"]
+                if use_bars:
+                    upper = (stats["p90"] - stats["mean"]).clip(lower=0)
+                    lower = (stats["mean"] - stats["p10"]).clip(lower=0)
+                    fig.add_trace(go.Bar(
+                        x=stats.index, y=stats["mean"],
+                        marker=dict(color=color),
+                        error_y=dict(type="data", symmetric=False,
+                                     array=upper, arrayminus=lower,
+                                     color=color, thickness=1.2, width=0),
+                        showlegend=False), row=2, col=1)
+                else:
+                    fig.add_trace(go.Scatter(
+                        x=stats.index, y=stats["mean"], mode="lines",
+                        line=dict(color=color, width=2),
+                        showlegend=False), row=2, col=1)
+            except Exception as e:
+                print(f"[PRECIP-PLOT] Bỏ qua {mk}: {e}")
+
+        # ---- Median mưa ----
         if has_median and median_precip is not None and not median_precip.empty:
-            if use_bars:
-                fig.add_trace(go.Bar(
-                    x=median_precip.index, y=median_precip["median"],
-                    marker=dict(color="#000000", opacity=0.7),
-                    name="🌟 Trung vị tổ hợp", showlegend=False),
-                    row=2, col=1)
-            else:
-                fig.add_trace(go.Scatter(
-                    x=median_precip.index, y=median_precip["median"],
-                    mode="lines",
-                    line=dict(color="#000000", width=3, dash="dash"),
-                    name="🌟 Trung vị tổ hợp"), row=2, col=1)
+            try:
+                _y = pd.to_numeric(median_precip["median"], errors="coerce")
+                _mask = _y.notna()
+                if _mask.any():
+                    if use_bars:
+                        fig.add_trace(go.Bar(
+                            x=median_precip.index[_mask], y=_y[_mask],
+                            marker=dict(color="#000000", opacity=0.7),
+                            name="🌟 Trung vị tổ hợp",
+                            showlegend=False), row=2, col=1)
+                    else:
+                        fig.add_trace(go.Scatter(
+                            x=median_precip.index[_mask], y=_y[_mask],
+                            mode="lines",
+                            line=dict(color="#000000", width=3, dash="dash"),
+                            name="🌟 Trung vị tổ hợp"), row=2, col=1)
+            except Exception as e:
+                print(f"[MEDIAN-PRECIP] {e}")
 
         fig.update_layout(height=760, hovermode="x unified",
                           barmode="group", bargap=0.15, bargroupgap=0.05,
-                          legend=dict(orientation="h", yanchor="bottom", y=1.02),
+                          legend=dict(orientation="h", yanchor="bottom",
+                                      y=1.02),
                           margin=dict(l=40, r=20, t=80, b=40))
         st.plotly_chart(fig, use_container_width=True)
 
@@ -777,62 +814,78 @@ def handle_forecast_run(input_mode, address, lat_input, lon_input,
         c1, c2, c3, c4 = st.columns(4)
 
         if temp_ensembles:
-            vals = [float(compute_ensemble_stats(d)["mean"].max())
-                    for d in temp_ensembles.values()
-                    if not compute_ensemble_stats(d).empty]
+            vals, vals_min = [], []
+            for d in temp_ensembles.values():
+                s = compute_ensemble_stats(d)
+                if s.empty or "mean" not in s.columns:
+                    continue
+                try:
+                    vals.append(float(s["mean"].max()))
+                    vals_min.append(float(s["mean"].min()))
+                except Exception:
+                    continue
             if vals:
                 c1.metric("🌡️ T cao nhất", f"{max(vals):.1f} °C")
-            vals_min = [float(compute_ensemble_stats(d)["mean"].min())
-                        for d in temp_ensembles.values()
-                        if not compute_ensemble_stats(d).empty]
             if vals_min:
                 c2.metric("❄️ T thấp nhất", f"{min(vals_min):.1f} °C")
 
         if precip_ensembles:
-            r_tot = [float(compute_ensemble_stats(d)["mean"].sum())
-                     for d in precip_ensembles.values()
-                     if not compute_ensemble_stats(d).empty]
-            r_pk = [float(compute_ensemble_stats(d)["mean"].max())
-                    for d in precip_ensembles.values()
-                    if not compute_ensemble_stats(d).empty]
+            r_tot, r_pk = [], []
+            for d in precip_ensembles.values():
+                s = compute_ensemble_stats(d)
+                if s.empty or "mean" not in s.columns:
+                    continue
+                try:
+                    r_tot.append(float(s["mean"].sum()))
+                    r_pk.append(float(s["mean"].max()))
+                except Exception:
+                    continue
             if r_tot:
                 c3.metric("💧 Tổng mưa (max)", f"{max(r_tot):.1f} mm")
             if r_pk:
                 c4.metric("☔ Đỉnh mưa 1h", f"{max(r_pk):.1f} mm")
-
+                    # ================================================
     # TAB 2
+    # ================================================
     with tab2:
         cv = st.radio("Chọn biến:", ["🌡️ Nhiệt độ", "💧 Lượng mưa"],
                       horizontal=True, key="compare_var_radio",
                       label_visibility="collapsed")
         st.divider()
-        ens_to_use = temp_ensembles if cv == "🌡️ Nhiệt độ" else precip_ensembles
+        ens_to_use = (temp_ensembles if cv == "🌡️ Nhiệt độ"
+                      else precip_ensembles)
         unit = "°C" if cv == "🌡️ Nhiệt độ" else "mm"
         if not ens_to_use:
             st.info("Không có dữ liệu.")
         else:
             fig_cmp = go.Figure()
             for mk, ens_df in ens_to_use.items():
-                stats = compute_ensemble_stats(ens_df)
-                if stats.empty:
+                try:
+                    stats = compute_ensemble_stats(ens_df)
+                    if stats.empty or "mean" not in stats.columns:
+                        continue
+                    fig_cmp.add_trace(go.Scatter(
+                        x=stats.index, y=stats["mean"], mode="lines",
+                        line=dict(color=ALL_MODELS[mk]["color"], width=2),
+                        name=ALL_MODELS[mk]["label"]))
+                except Exception:
                     continue
-                fig_cmp.add_trace(go.Scatter(
-                    x=stats.index, y=stats["mean"], mode="lines",
-                    line=dict(color=ALL_MODELS[mk]["color"], width=2),
-                    name=ALL_MODELS[mk]["label"]))
             fig_cmp.update_layout(
                 height=500, hovermode="x unified",
                 xaxis_title="Thời gian", yaxis_title=unit,
                 legend=dict(orientation="h", y=1.02))
             st.plotly_chart(fig_cmp, use_container_width=True)
 
+    # ================================================
     # TAB 3
+    # ================================================
     with tab3:
         st.subheader("🕐 Chi tiết theo giờ")
         if not temp_ensembles and not precip_ensembles:
             st.warning("Không có dữ liệu.")
         else:
-            opts = list(temp_ensembles.keys()) or list(precip_ensembles.keys())
+            opts = (list(temp_ensembles.keys())
+                    or list(precip_ensembles.keys()))
             selected = st.radio("Chọn mô hình:", options=opts,
                                 format_func=lambda k: ALL_MODELS[k]["label"],
                                 horizontal=True, key="hourly_model_radio",
@@ -886,7 +939,8 @@ def handle_forecast_run(input_mode, address, lat_input, lon_input,
                     "Nhiệt độ (°C)": df["temp"].round(1).values,
                     "Mưa 1h (mm)": df["rain"].round(2).values,
                     "Mưa 24h (mm)": df["rain_24h"].round(1).values,
-                    "Xác suất mưa (%)": (df["rain_prob"] * 100).round(0).astype(int).values,
+                    "Xác suất mưa (%)": (df["rain_prob"] * 100)
+                        .round(0).astype(int).values,
                 })
 
                 st.caption(f"📊 {len(disp)} giờ — từ "
@@ -897,12 +951,15 @@ def handle_forecast_run(input_mode, address, lat_input, lon_input,
 
                 csv_buf = io.StringIO()
                 disp.to_csv(csv_buf, index=False, encoding="utf-8-sig")
-                st.download_button("📥 Tải CSV",
-                                   data=csv_buf.getvalue().encode("utf-8-sig"),
-                                   file_name=f"du_bao_{selected}.csv",
-                                   mime="text/csv", key="dl_hourly")
+                st.download_button(
+                    "📥 Tải CSV",
+                    data=csv_buf.getvalue().encode("utf-8-sig"),
+                    file_name=f"du_bao_{selected}.csv",
+                    mime="text/csv", key="dl_hourly")
 
-    # TAB 4
+    # ================================================
+    # TAB 4: QCVN
+    # ================================================
     with tab4:
         st.subheader("✅ Đánh giá QCVN 84:2024/BTNMT")
         if not enable_qcvn:
@@ -916,7 +973,8 @@ def handle_forecast_run(input_mode, address, lat_input, lon_input,
                                          parse_dates=["time"]).set_index("time")
                     obs_temp = obs_precip = None
                     if "temperature" in obs_df.columns:
-                        obs_temp = obs_df.assign(observed=obs_df["temperature"])
+                        obs_temp = obs_df.assign(
+                            observed=obs_df["temperature"])
                     elif "observed" in obs_df.columns:
                         obs_temp = obs_df
                     if "precipitation" in obs_df.columns:
@@ -928,34 +986,43 @@ def handle_forecast_run(input_mode, address, lat_input, lon_input,
                     all_eval = []
                     for mk in model_keys:
                         if mk in temp_ensembles and obs_temp is not None:
-                            edf = evaluate_forecast_qcvn(
-                                temp_ensembles[mk], obs_temp,
-                                "temperature_2m", "temperature")
-                            if not edf.empty:
-                                s = summarize_qcvn_evaluation(edf)
-                                s["model"] = ALL_MODELS[mk]["label"]
-                                s["variable"] = "Nhiệt độ"
-                                s["grade"] = grade_forecast_qcvn(s)
-                                all_eval.append(s)
+                            try:
+                                edf = evaluate_forecast_qcvn(
+                                    temp_ensembles[mk], obs_temp,
+                                    "temperature_2m", "temperature")
+                                if not edf.empty:
+                                    s = summarize_qcvn_evaluation(edf)
+                                    s["model"] = ALL_MODELS[mk]["label"]
+                                    s["variable"] = "Nhiệt độ"
+                                    s["grade"] = grade_forecast_qcvn(s)
+                                    all_eval.append(s)
+                            except Exception:
+                                pass
                         if mk in precip_ensembles and obs_precip is not None:
-                            edf = evaluate_forecast_qcvn(
-                                precip_ensembles[mk], obs_precip,
-                                "precipitation", "precipitation")
-                            if not edf.empty:
-                                s = summarize_qcvn_evaluation(edf)
-                                s["model"] = ALL_MODELS[mk]["label"]
-                                s["variable"] = "Mưa"
-                                s["grade"] = grade_forecast_qcvn(s)
-                                all_eval.append(s)
+                            try:
+                                edf = evaluate_forecast_qcvn(
+                                    precip_ensembles[mk], obs_precip,
+                                    "precipitation", "precipitation")
+                                if not edf.empty:
+                                    s = summarize_qcvn_evaluation(edf)
+                                    s["model"] = ALL_MODELS[mk]["label"]
+                                    s["variable"] = "Mưa"
+                                    s["grade"] = grade_forecast_qcvn(s)
+                                    all_eval.append(s)
+                            except Exception:
+                                pass
                     if all_eval:
                         st.dataframe(pd.DataFrame(all_eval),
-                                     use_container_width=True, hide_index=True)
+                                     use_container_width=True,
+                                     hide_index=True)
                     else:
                         st.warning("Không đủ dữ liệu.")
                 except Exception as e:
                     st.error(f"Lỗi: {e}")
 
-    # TAB 5
+    # ================================================
+    # TAB 5: LỊCH SỬ
+    # ================================================
     with tab5:
         st.subheader("💾 Lịch sử đánh giá")
         try:
@@ -995,7 +1062,8 @@ elif page == "kttv":
             go("home")
 
 
-if st.session_state.get("show_admin") and st.session_state.get("admin_authed"):
+if (st.session_state.get("show_admin")
+        and st.session_state.get("admin_authed")):
     fake_admin = {"username": "admin", "full_name": "Quản trị viên",
                   "role": "admin", "id": 0}
     render_admin_panel(fake_admin)
