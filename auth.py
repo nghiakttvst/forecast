@@ -1,5 +1,5 @@
 """
-Module xác thực người dùng.
+Xác thực người dùng.
 """
 
 import hashlib
@@ -149,7 +149,6 @@ def admin_reset_password(user_id: int, new_password: str) -> Dict:
 
 @st.cache_data(ttl=60, show_spinner=False)
 def list_users() -> List[Dict]:
-    """Cached 60 giây."""
     _ensure_users_table()
     with get_connection() as conn:
         return fetchall(conn, """

@@ -1,5 +1,5 @@
 """
-Module lưu trữ — có cache cho các query đọc.
+Lưu trữ dự báo, đánh giá, ghim, bản tin — có cache.
 """
 
 import json
@@ -72,6 +72,7 @@ def save_forecast(location, lat, lon, model_key, variable,
               json.dumps(summary, default=str)))
 
 
+@st.cache_data(ttl=120, show_spinner=False)
 def load_forecasts(limit: int = 500) -> pd.DataFrame:
     _ensure_db()
     with get_connection() as conn:
@@ -98,11 +99,11 @@ def save_evaluation(location, lat, lon, model_key, variable, summary):
               summary.get("Bias"), summary.get("PC"),
               summary.get("Scf_mean"), summary.get("pct_within_qcvn"),
               summary.get("n_points")))
+    load_evaluations.clear()
 
 
-@st.cache_data(ttl=60, show_spinner=False)
+@st.cache_data(ttl=120, show_spinner=False)
 def load_evaluations(location=None, model_key=None, limit=500) -> pd.DataFrame:
-    """Cached 60 giây."""
     _ensure_db()
     with get_connection() as conn:
         rows = fetchall(conn,
@@ -124,14 +125,12 @@ def save_favorite(address: str, display: str, lat: float, lon: float) -> bool:
             INSERT INTO favorites (created_at, address, display, lat, lon)
             VALUES (?, ?, ?, ?, ?)
         """, (datetime.utcnow().isoformat(), address, display, lat, lon))
-    # Xóa cache sau khi ghi
     load_favorites.clear()
     return True
 
 
-@st.cache_data(ttl=30, show_spinner=False)
+@st.cache_data(ttl=60, show_spinner=False)
 def load_favorites() -> List[Dict]:
-    """Cached 30 giây."""
     _ensure_db()
     with get_connection() as conn:
         return fetchall(conn,
@@ -148,7 +147,7 @@ def delete_favorite(fav_id: int) -> bool:
 
 
 # ============================================================
-# BẢN TIN (BULLETINS)
+# BẢN TIN
 # ============================================================
 def save_bulletin(category: str, title: str, description: str,
                   filename: str, file_bytes: bytes,
@@ -181,14 +180,12 @@ def save_bulletin(category: str, title: str, description: str,
             row = cur.fetchone()
             new_id = row["id"] if row else 0
 
-    # Xóa cache
     list_bulletins.clear()
     return new_id
 
 
-@st.cache_data(ttl=30, show_spinner=False)
+@st.cache_data(ttl=60, show_spinner=False)
 def list_bulletins(category: str = None, limit: int = 50) -> list:
-    """Cached 30 giây."""
     _ensure_db()
     with get_connection() as conn:
         if category:
@@ -205,9 +202,8 @@ def list_bulletins(category: str = None, limit: int = 50) -> list:
         """, (limit,))
 
 
-@st.cache_data(ttl=300, show_spinner=False)
+@st.cache_data(ttl=600, show_spinner=False)
 def get_bulletin(bulletin_id: int):
-    """Cached 5 phút — ít thay đổi."""
     _ensure_db()
     with get_connection() as conn:
         return fetchone(conn, "SELECT * FROM bulletins WHERE id = ?",

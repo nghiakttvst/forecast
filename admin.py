@@ -4,7 +4,6 @@ Admin: user + thống kê + bản tin.
 
 import streamlit as st
 import pandas as pd
-import plotly.graph_objects as go
 
 from config import BULLETIN_CATEGORIES, BULLETIN_MAX_SIZE_MB
 from auth import (
@@ -20,6 +19,9 @@ from storage import (
 
 
 def render_admin_panel(current_user: dict):
+    # Lazy import plotly — chỉ load khi vào tab admin
+    import plotly.graph_objects as go
+
     st.markdown("## 🛡️ Bảng điều khiển Admin")
 
     tab_a, tab_b, tab_c, tab_d, tab_e = st.tabs([
@@ -27,7 +29,6 @@ def render_admin_panel(current_user: dict):
         "➕ Thêm user", "📰 Quản lý bản tin",
     ])
 
-    # TAB A
     with tab_a:
         st.subheader("📊 Thống kê tổng quan")
         stats = get_stats()
@@ -62,15 +63,14 @@ def render_admin_panel(current_user: dict):
                               yaxis2=dict(title="Khách",
                                           overlaying="y", side="right"),
                               legend=dict(orientation="h", y=1.1))
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
 
         st.subheader("🕒 Lượt truy cập gần đây")
         recent = get_recent_visits(50)
         if recent:
-            st.dataframe(pd.DataFrame(recent), use_container_width=True,
+            st.dataframe(pd.DataFrame(recent), width='stretch',
                          hide_index=True, height=300)
 
-    # TAB B
     with tab_b:
         st.subheader("👥 Danh sách user")
         users = list_users()
@@ -81,7 +81,7 @@ def render_admin_panel(current_user: dict):
             st.dataframe(df[["id", "username", "full_name", "email",
                              "role", "is_active", "login_count",
                              "last_login"]],
-                         use_container_width=True, hide_index=True)
+                         width='stretch', hide_index=True)
 
             st.divider()
             u_opts = {u["id"]: f"{u['username']} ({u.get('full_name','')})"
@@ -118,7 +118,6 @@ def render_admin_panel(current_user: dict):
                         (st.success if r["success"]
                          else st.error)(r["message"])
 
-    # TAB C
     with tab_c:
         st.subheader("🔑 Mật khẩu người dùng")
         st.warning("⚠️ Chỉ admin xem được.")
@@ -130,10 +129,9 @@ def render_admin_panel(current_user: dict):
                 "Họ tên": u.get("full_name", ""),
                 "Vai trò": u["role"],
             } for u in users]
-            st.dataframe(pd.DataFrame(rows), use_container_width=True,
+            st.dataframe(pd.DataFrame(rows), width='stretch',
                          hide_index=True)
 
-    # TAB D
     with tab_d:
         st.subheader("➕ Thêm user")
         with st.form("adm_add_user"):
@@ -155,7 +153,6 @@ def render_admin_panel(current_user: dict):
                     if r["success"]:
                         st.rerun()
 
-    # TAB E: BẢN TIN
     with tab_e:
         st.subheader("📰 Upload & Quản lý bản tin")
 

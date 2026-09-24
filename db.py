@@ -1,6 +1,6 @@
 """
-Module kết nối DB: Supabase PostgreSQL hoặc SQLite local.
-Tự động fallback về SQLite nếu Supabase lỗi.
+Kết nối DB tập trung: Supabase PostgreSQL hoặc SQLite local.
+Hỗ trợ connection pool để giảm latency.
 """
 
 import os
@@ -25,11 +25,11 @@ _USE_POSTGRES = False
 _DRIVER = None
 _FALLBACK_REASON = ""
 _CONNECTION_TESTED = False
+_pool = None
 
 
 def _test_postgres_connection():
     global _USE_POSTGRES, _DRIVER, _FALLBACK_REASON, _CONNECTION_TESTED
-
     if _CONNECTION_TESTED:
         return
     _CONNECTION_TESTED = True
@@ -75,18 +75,8 @@ def _test_postgres_connection():
         print(f"[DB] → Fallback SQLite: {_SQLITE_PATH}")
 
 
-def _adapt_sql(sql: str) -> str:
-    return sql.replace("?", "%s") if _USE_POSTGRES else sql
-
-
-# ============================================================
-# CONNECTION POOL — Giảm latency cho Supabase
-# ============================================================
-_pool = None
-
-
 def _get_pool():
-    """Tạo connection pool cho Postgres (chỉ khởi tạo 1 lần)."""
+    """Tạo connection pool (chỉ khởi tạo 1 lần)."""
     global _pool
     if _pool is not None:
         return _pool
@@ -109,20 +99,17 @@ def _get_pool():
                 timeout=30,
                 kwargs={"prepare_threshold": None},
             )
-            print("[DB] ✅ Đã tạo connection pool (psycopg3)")
-            return _pool
-        else:
-            from psycopg2 import pool as pg_pool
-            _pool = pg_pool.SimpleConnectionPool(
-                minconn=1, maxconn=5, dsn=dsn, connect_timeout=15)
-            print("[DB] ✅ Đã tạo connection pool (psycopg2)")
+            print("[DB] ✅ Pool created (psycopg3)")
             return _pool
     except ImportError:
-        print("[DB] ⚠️ Chưa cài psycopg_pool → dùng connect trực tiếp")
-        return None
+        print("[DB] ⚠️ Chưa cài psycopg_pool → connect trực tiếp")
     except Exception as e:
-        print(f"[DB] ⚠️ Lỗi tạo pool: {e}")
-        return None
+        print(f"[DB] ⚠️ Pool error: {e}")
+    return None
+
+
+def _adapt_sql(sql: str) -> str:
+    return sql.replace("?", "%s") if _USE_POSTGRES else sql
 
 
 @contextmanager
@@ -131,30 +118,18 @@ def get_connection():
 
     if _USE_POSTGRES and _DRIVER:
         pool = _get_pool()
-        if pool is not None:
-            # Dùng pool
+        if pool is not None and _DRIVER == "psycopg3":
             try:
-                if _DRIVER == "psycopg3":
-                    with pool.connection() as conn:
-                        try:
-                            yield conn
-                            conn.commit()
-                        except Exception:
-                            conn.rollback()
-                            raise
-                else:
-                    conn = pool.getconn()
+                with pool.connection() as conn:
                     try:
                         yield conn
                         conn.commit()
                     except Exception:
                         conn.rollback()
                         raise
-                    finally:
-                        pool.putconn(conn)
                 return
             except Exception as e:
-                print(f"[DB] ⚠️ Pool lỗi: {e} → dùng connect trực tiếp")
+                print(f"[DB] ⚠️ Pool runtime error: {e}")
 
         # Fallback: connect trực tiếp
         dsn = DATABASE_URL.strip()
@@ -179,8 +154,7 @@ def get_connection():
                 conn.close()
             return
         except Exception as e:
-            print(f"[DB] ⚠️ Postgres runtime lỗi: {e}")
-            print(f"[DB] → Fallback SQLite")
+            print(f"[DB] ⚠️ Postgres error: {e} → SQLite")
 
     # SQLite fallback
     Path(_SQLITE_PATH).parent.mkdir(parents=True, exist_ok=True)
@@ -256,9 +230,6 @@ def get_db_info() -> dict:
             "persistent": False, "reason": _FALLBACK_REASON or "Không có URL"}
 
 
-# ============================================================
-# TỰ ĐỘNG TẠO BẢNG BULLETINS
-# ============================================================
 def _ensure_bulletins_table():
     try:
         with get_connection() as conn:
@@ -273,8 +244,7 @@ def _ensure_bulletins_table():
                         filename TEXT,
                         file_size INTEGER,
                         file_data TEXT,
-                        uploader TEXT DEFAULT 'admin'
-                    )
+                        uploader TEXT DEFAULT 'admin')
                 """)
             else:
                 execute(conn, """
@@ -287,8 +257,7 @@ def _ensure_bulletins_table():
                         filename TEXT,
                         file_size INTEGER,
                         file_data TEXT,
-                        uploader TEXT DEFAULT 'admin'
-                    )
+                        uploader TEXT DEFAULT 'admin')
                 """)
     except Exception as e:
         print(f"[DB] Lỗi tạo bảng bulletins: {e}")
