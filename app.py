@@ -502,7 +502,6 @@ def render_home():
 """, unsafe_allow_html=True)
             if st.button("Khí tượng", key="btn_go_kttv",
                          width='stretch',
-                         label_visibility="collapsed"):
                 navigate("kttv", "forecast")
 
     # ---------- THỦY VĂN ----------
@@ -520,7 +519,6 @@ def render_home():
 """, unsafe_allow_html=True)
             if st.button("Thủy văn", key="btn_go_tv",
                          width='stretch',
-                         label_visibility="collapsed"):
                 navigate("thuyvan")
 
     # ---------- MẠNG LƯỚI ----------
@@ -538,7 +536,6 @@ def render_home():
 """, unsafe_allow_html=True)
             if st.button("Mạng lưới", key="btn_go_ml",
                          width='stretch',
-                         label_visibility="collapsed"):
                 navigate("network")
                 # ============================================================
 # TRANG KTTV
