@@ -476,6 +476,7 @@ def navigate(page: str, tab: str = None):
 # TRANG CHỦ
 # ============================================================
 def render_home():
+    # Banner
     st.markdown("""
 <div class="header-banner">
     <div class="h1">🌊 ĐÀI KHÍ TƯỢNG THỦY VĂN NAM BỘ 🌦️</div>
@@ -500,8 +501,7 @@ def render_home():
     </div>
 </div>
 """, unsafe_allow_html=True)
-            if st.button("Khí tượng", key="btn_go_kttv",
-                         width='stretch',
+            if st.button("Khí tượng", key="btn_go_kttv", width='stretch'):
                 navigate("kttv", "forecast")
 
     # ---------- THỦY VĂN ----------
@@ -517,8 +517,7 @@ def render_home():
     </div>
 </div>
 """, unsafe_allow_html=True)
-            if st.button("Thủy văn", key="btn_go_tv",
-                         width='stretch',
+            if st.button("Thủy văn", key="btn_go_tv", width='stretch'):
                 navigate("thuyvan")
 
     # ---------- MẠNG LƯỚI ----------
@@ -534,12 +533,10 @@ def render_home():
     </div>
 </div>
 """, unsafe_allow_html=True)
-            if st.button("Mạng lưới", key="btn_go_ml",
-                         width='stretch',
+            if st.button("Mạng lưới", key="btn_go_ml", width='stretch'):
                 navigate("network")
-                # ============================================================
-# TRANG KTTV
-# ============================================================
+
+
 def render_kttv():
     # ---------- STICKY TOP: Banner + Nút về trang chủ ----------
     with st.container(key="kttv_top"):
