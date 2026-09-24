@@ -174,6 +174,7 @@ st.markdown("""
         font-family: 'Material Symbols Rounded' !important;
     }
 
+    /* Ẩn toolbar Streamlit Cloud */
     [data-testid="stToolbar"], [data-testid="stStatusWidget"],
     [data-testid="stAppDeployButton"], [data-testid="stManageAppButton"],
     [data-testid="stAppToolbar"], [data-testid="stDecoration"],
@@ -184,11 +185,25 @@ st.markdown("""
     }
     iframe[src*="streamlit.io"] { display: none !important; }
 
+    /* Ẩn nút collapse sidebar */
     [data-testid="stSidebarCollapseButton"],
     [data-testid="stSidebarCollapsedControl"] { display: none !important; }
     section[data-testid="stSidebar"] {
         transform: translateX(0) !important; margin-left: 0 !important;
         min-width: 300px !important; width: 300px !important;
+    }
+
+    /* ============================================
+       CHO PHÉP STICKY HOẠT ĐỘNG
+       ============================================ */
+    [data-testid="stAppViewContainer"],
+    [data-testid="stAppViewContainer"] > .main,
+    [data-testid="stMain"],
+    section.main,
+    .main .block-container,
+    [data-testid="stMainBlockContainer"] {
+        overflow: visible !important;
+        overflow-y: visible !important;
     }
 
     .stApp {
@@ -197,11 +212,14 @@ st.markdown("""
     }
     .block-container { padding: 1rem 1rem 5rem !important; }
 
+    /* ============================================
+       BANNER (trang chủ)
+       ============================================ */
     .header-banner {
         background: linear-gradient(120deg, #4a9fe0 0%, #5cb8d9 50%, #6dc8c2 100%);
-        border-radius: 18px; padding: 20px 28px; margin-bottom: 18px;
-        box-shadow: 0 4px 14px rgba(74,159,224,0.22); text-align: center;
-        color: white;
+        border-radius: 18px; padding: 20px 28px;
+        box-shadow: 0 4px 14px rgba(74,159,224,0.22);
+        text-align: center; color: white;
     }
     .header-banner .h1 {
         font-size: 1.0rem; font-weight: 600; letter-spacing: 3px;
@@ -221,13 +239,47 @@ st.markdown("""
     .stButton > button:hover { transform: translateY(-1px); }
 
     /* ============================================
-       THẺ CARD TRANG CHỦ — CLICK TOÀN BỘ
+       STICKY DÒNG 1: Nút Trang chủ (trái) + Tiêu đề (phải)
+       ============================================ */
+    .st-key-kttv_top {
+        position: sticky !important;
+        top: 0 !important;
+        z-index: 1000 !important;
+        background: #eaf4fb !important;
+        padding: 12px 0 6px 0 !important;
+        margin: -1rem 0 0 0 !important;
+        border-bottom: 1px solid rgba(74,159,224,0.15) !important;
+    }
+
+    /* ============================================
+       STICKY DÒNG 2: Submenu
+       ============================================ */
+    .st-key-kttv_submenu {
+        position: sticky !important;
+        top: 68px !important;
+        z-index: 999 !important;
+        background: #eaf4fb !important;
+        padding: 8px 0 12px 0 !important;
+        margin: 0 0 12px 0 !important;
+        border-bottom: 2px solid rgba(74,159,224,0.28) !important;
+        box-shadow: 0 4px 10px rgba(74,159,224,0.06) !important;
+    }
+
+    /* ============================================
+       THẺ CARD TRANG CHỦ — CLICK TOÀN BỘ (kể cả icon)
        ============================================ */
     .zone-card {
-        border-radius: 18px; padding: 28px 22px; min-height: 240px;
-        text-align: center; transition: all 0.3s ease;
+        border-radius: 18px;
+        padding: 24px 20px;
+        min-height: 280px;
+        text-align: center;
+        transition: all 0.3s ease;
         box-shadow: 0 6px 20px rgba(0,60,120,0.10);
         border: 3px solid transparent;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
     }
     .zone-kttv     { background: linear-gradient(150deg, #e3f2fd 0%, #bbdefb 100%); }
     .zone-thuyvan  { background: linear-gradient(150deg, #e0f7fa 0%, #b2ebf2 100%); }
@@ -239,68 +291,52 @@ st.markdown("""
     }
     .zone-desc { font-size: 0.9rem; color: #455a64; line-height: 1.5; }
 
+    /* Container thẻ: position relative để làm anchor cho nút ẩn */
     .st-key-zone_kttv,
     .st-key-zone_thuyvan,
     .st-key-zone_mangluoi {
-        position: relative;
+        position: relative !important;
+        isolation: isolate;
     }
+
+    /* Nút ẩn phủ TOÀN BỘ thẻ, bao gồm cả icon */
     .st-key-zone_kttv .stButton,
     .st-key-zone_thuyvan .stButton,
     .st-key-zone_mangluoi .stButton {
         position: absolute !important;
-        top: 0 !important; left: 0 !important;
-        width: 100% !important; height: 100% !important;
-        opacity: 0 !important; z-index: 10 !important;
+        top: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        bottom: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
         margin: 0 !important;
+        padding: 0 !important;
+        z-index: 100 !important;
+        opacity: 0 !important;
     }
-    .st-key-zone_kttv .stButton button,
-    .st-key-zone_thuyvan .stButton button,
-    .st-key-zone_mangluoi .stButton button {
-        width: 100% !important; height: 100% !important;
+
+    .st-key-zone_kttv .stButton > button,
+    .st-key-zone_thuyvan .stButton > button,
+    .st-key-zone_mangluoi .stButton > button {
+        width: 100% !important;
+        height: 100% !important;
+        min-height: 280px !important;
         background: transparent !important;
         border: none !important;
         cursor: pointer !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        box-shadow: none !important;
     }
+
+    /* Hover effect khi di chuột vào thẻ */
     .st-key-zone_kttv:hover .zone-card,
     .st-key-zone_thuyvan:hover .zone-card,
     .st-key-zone_mangluoi:hover .zone-card {
         transform: translateY(-6px);
         box-shadow: 0 12px 30px rgba(0,60,120,0.20);
         border-color: #4a9fe0;
-    }
-
-    .submenu-title {
-        font-size: 1.05rem; font-weight: 700; color: #0e4a7b;
-        margin: 4px 0 12px 0; padding-left: 6px;
-        border-left: 4px solid #4a9fe0;
-    }
-
-    /* ============================================
-       STICKY: BANNER + SUBMENU
-       ============================================ */
-    .st-key-kttv_top {
-        position: sticky !important;
-        top: 0 !important;
-        z-index: 1000 !important;
-        background: linear-gradient(180deg,
-            #eaf4fb 0%, #eaf4fb 90%, rgba(234,244,251,0.85) 100%)
-            !important;
-        padding: 10px 0 8px 0 !important;
-        margin: -10px 0 0 0 !important;
-    }
-
-    .st-key-kttv_submenu {
-        position: sticky !important;
-        top: 118px !important;
-        z-index: 999 !important;
-        background: linear-gradient(180deg,
-            #eaf4fb 0%, #eaf4fb 95%, rgba(234,244,251,0.95) 100%)
-            !important;
-        padding: 14px 0 12px 0 !important;
-        margin: 0 0 10px 0 !important;
-        border-bottom: 2px solid rgba(74,159,224,0.25) !important;
-        box-shadow: 0 4px 12px rgba(74,159,224,0.08) !important;
-        backdrop-filter: blur(8px);
     }
 
     /* ============================================
@@ -340,16 +376,14 @@ st.markdown("""
         border-left-color: #ea4335;
     }
     .bulletin-title {
-        font-size: 1rem;
-        font-weight: 700;
-        color: #0e4a7b;
-        margin: 0 0 4px 0;
+        font-size: 1rem; font-weight: 700;
+        color: #0e4a7b; margin: 0 0 4px 0;
     }
-    .bulletin-meta {
-        font-size: 0.82rem;
-        color: #6d8a99;
-    }
+    .bulletin-meta { font-size: 0.82rem; color: #6d8a99; }
 
+    /* ============================================
+       FOOTER
+       ============================================ */
     .footer {
         margin-top: 40px; padding: 20px 24px;
         background: linear-gradient(90deg,
@@ -476,7 +510,6 @@ def navigate(page: str, tab: str = None):
 # TRANG CHỦ
 # ============================================================
 def render_home():
-    # Banner
     st.markdown("""
 <div class="header-banner">
     <div class="h1">🌊 ĐÀI KHÍ TƯỢNG THỦY VĂN NAM BỘ 🌦️</div>
@@ -484,7 +517,7 @@ def render_home():
 </div>
 """, unsafe_allow_html=True)
 
-    st.markdown("<div style='height:20px;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:24px;'></div>", unsafe_allow_html=True)
 
     c1, c2, c3 = st.columns(3, gap="large")
 
@@ -535,33 +568,39 @@ def render_home():
 """, unsafe_allow_html=True)
             if st.button("Mạng lưới", key="btn_go_ml", width='stretch'):
                 navigate("network")
-
-
+                # ============================================================
+# TRANG KTTV — Layout: Nút trái + Tiêu đề phải (2 dòng sticky)
+# ============================================================
 def render_kttv():
-    # ---------- STICKY TOP: Banner + Nút về trang chủ ----------
+    # ============================================
+    # STICKY DÒNG 1: Nút Trang chủ (trái) + Tiêu đề (phải)
+    # ============================================
     with st.container(key="kttv_top"):
-        col_banner, col_back = st.columns([5, 1])
-        with col_banner:
-            st.markdown("""
-<div class="header-banner" style="margin-bottom:8px;">
-    <div class="h1">🌦️ Dự báo Khí tượng</div>
-    <div class="h2">Đài Khí tượng Thủy văn TP. Cần Thơ</div>
-</div>
-""", unsafe_allow_html=True)
+        col_back, col_title = st.columns([1, 4], gap="medium")
+
+        # ----- Nút Trang chủ bên TRÁI -----
         with col_back:
-            st.markdown("<div style='height:20px;'></div>",
-                        unsafe_allow_html=True)
-            if st.button("← Trang chủ", key="btn_back_home",
+            if st.button("🏠 Trang chủ", key="btn_back_home",
                          width='stretch'):
                 navigate("home")
 
-    # ---------- STICKY BOTTOM: Submenu ----------
-    with st.container(key="kttv_submenu"):
-        st.markdown(
-            "<div class='submenu-title'>"
-            "📂 Danh mục bản tin & dự báo</div>",
-            unsafe_allow_html=True)
+        # ----- Tiêu đề bên PHẢI -----
+        with col_title:
+            st.markdown("""
+<div style='display:flex; align-items:center; height:44px;
+            padding-left:12px;'>
+    <span style='font-size:1.5rem; margin-right:10px;'>🌦️</span>
+    <span style='font-size:1.35rem; font-weight:800;
+                 color:#0e4a7b; letter-spacing:0.5px;'>
+        Dự báo Khí tượng
+    </span>
+</div>
+""", unsafe_allow_html=True)
 
+    # ============================================
+    # STICKY DÒNG 2: Submenu
+    # ============================================
+    with st.container(key="kttv_submenu"):
         submenu = [
             ("forecast",   "📊 Dự báo số trị"),
             ("daily",      "📰 Bản tin hàng ngày"),
@@ -579,7 +618,9 @@ def render_kttv():
                     st.session_state["kttv_tab"] = key
                     st.rerun()
 
-    # ---------- NỘI DUNG ----------
+    # ============================================
+    # NỘI DUNG PHÍA DƯỚI
+    # ============================================
     tab = st.session_state.get("kttv_tab", "forecast")
 
     if tab == "forecast":
@@ -685,7 +726,8 @@ def render_placeholder(title: str, icon: str, message: str):
 
     cback, _ = st.columns([1, 5])
     with cback:
-        if st.button("← Trang chủ", key=f"back_{title}"):
+        if st.button("🏠 Trang chủ", key=f"back_{title}",
+                     width='stretch'):
             navigate("home")
 
     st.info(f"🚧 {message}")
@@ -1183,7 +1225,6 @@ def handle_forecast_run(input_mode, address, lat_input, lon_input,
 
             df["rain"] = df["rain"].fillna(0.0)
             df["rain_prob"] = df["rain_prob"].fillna(0.0)
-
             df["temp"] = df["temp"].astype(float)
             df["rain"] = df["rain"].astype(float)
             df["rain_prob"] = df["rain_prob"].astype(float)
@@ -1330,7 +1371,7 @@ elif page == "kttv":
                 st.session_state["kttv_tab"] = cat_key
                 st.rerun()
         st.divider()
-        if st.button("← Trang chủ", width='stretch', key="sb_home"):
+        if st.button("🏠 Trang chủ", width='stretch', key="sb_home"):
             navigate("home")
 
 
