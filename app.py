@@ -1,3 +1,4 @@
+
 """
 Đài KTTV TP. Cần Thơ — Ứng dụng dự báo đa mô hình
 """
@@ -86,8 +87,7 @@ def _render_hourly_table(df: pd.DataFrame):
                 f'font-weight:700; color:{color}; font-size:0.85rem;">'
                 f'{pct}%</span></div>')
         else:
-            bar_html = ('<span style="color:#c0c0c0; font-size:0.85rem;">'
-                        '—</span>')
+            bar_html = '<span style="color:#c0c0c0; font-size:0.85rem;">—</span>'
         rows_html += (
             '<tr>'
             f'<td style="padding:6px 10px; border-bottom:1px solid #e8f4f8; '
@@ -112,16 +112,15 @@ def _render_hourly_table(df: pd.DataFrame):
         'background:linear-gradient(135deg, #4a9fe0 0%, #6dc8c2 100%); '
         'color:#ffffff;"><tr>'
         '<th style="padding:10px; text-align:left; font-size:0.82rem; '
-        'font-weight:700; text-transform:uppercase;">Ngày/Giờ</th>'
+        'font-weight:700;">Ngày/Giờ</th>'
         '<th style="padding:10px; text-align:left; font-size:0.82rem; '
-        'font-weight:700; text-transform:uppercase;">Hiện tượng</th>'
+        'font-weight:700;">Hiện tượng</th>'
         '<th style="padding:10px; text-align:right; font-size:0.82rem; '
-        'font-weight:700; text-transform:uppercase;">Nhiệt độ (°C)</th>'
+        'font-weight:700;">Nhiệt độ (°C)</th>'
         '<th style="padding:10px; text-align:right; font-size:0.82rem; '
-        'font-weight:700; text-transform:uppercase;">Mưa 1h (mm)</th>'
+        'font-weight:700;">Mưa 1h (mm)</th>'
         '<th style="padding:10px; text-align:left; font-size:0.82rem; '
-        'font-weight:700; text-transform:uppercase; min-width:180px;">'
-        'Xác suất mưa</th>'
+        'font-weight:700; min-width:180px;">Xác suất mưa</th>'
         '</tr></thead>'
         f'<tbody>{rows_html}</tbody></table></div>')
     st.markdown(html, unsafe_allow_html=True)
@@ -138,7 +137,6 @@ st.set_page_config(
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap');
-
     html, body, .stApp, .stMarkdown, h1, h2, h3, h4, h5, h6,
     p, span:not([class*="material"]):not([data-testid*="Icon"]),
     label, input, textarea, button, select,
@@ -188,7 +186,6 @@ st.markdown("""
     h2, h3 { color: #145a92 !important; }
     .stButton > button { border-radius: 10px; transition: all 0.25s ease; }
     .stButton > button:hover { transform: translateY(-1px); }
-
     .zone-card-link {
         text-decoration: none !important;
         color: inherit !important;
@@ -276,7 +273,6 @@ components.html("""
 (function() {
     var doc;
     try { doc = window.parent.document; } catch(e) { return; }
-
     var SELECTORS = [
         '[data-testid="stStatusWidget"]',
         '[data-testid="stAppDeployButton"]',
@@ -286,7 +282,6 @@ components.html("""
         '[class*="viewerBadge"]',
         '[class*="ManageApp"]'
     ];
-
     function run() {
         SELECTORS.forEach(function(s) {
             try {
@@ -316,12 +311,13 @@ components.html("""
             }
         } catch(e) {}
     }
-
     run();
     setTimeout(run, 500);
 })();
 </script>
 """, height=0, width=0)
+
+
 _defaults = {
     "session_id": str(uuid.uuid4()),
     "page": "home",
@@ -415,11 +411,8 @@ def render_home():
     <div class="h2">ĐÀI KHÍ TƯỢNG THỦY VĂN THÀNH PHỐ CẦN THƠ</div>
 </div>
 """, unsafe_allow_html=True)
-
     st.markdown("<div style='height:24px;'></div>", unsafe_allow_html=True)
-
     c1, c2, c3 = st.columns(3, gap="large")
-
     with c1:
         st.markdown("""
 <a href="?page=kttv&tab=forecast" target="_self" class="zone-card-link">
@@ -433,7 +426,6 @@ def render_home():
     </div>
 </a>
 """, unsafe_allow_html=True)
-
     with c2:
         st.markdown("""
 <a href="?page=thuyvan" target="_self" class="zone-card-link">
@@ -447,7 +439,6 @@ def render_home():
     </div>
 </a>
 """, unsafe_allow_html=True)
-
     with c3:
         st.markdown("""
 <a href="?page=network" target="_self" class="zone-card-link">
@@ -461,10 +452,11 @@ def render_home():
     </div>
 </a>
 """, unsafe_allow_html=True)
+
+
 def render_kttv():
     with st.container(key="kttv_top"):
         col_back, col_title = st.columns([1, 4], gap="medium")
-
         with col_back:
             st.markdown("""
 <a href="?page=home" target="_self"
@@ -476,7 +468,6 @@ def render_kttv():
     🏠 Trang chủ
 </a>
 """, unsafe_allow_html=True)
-
         with col_title:
             st.markdown("""
 <div style='display:flex; align-items:center; padding-left:12px;
@@ -488,7 +479,6 @@ def render_kttv():
     </span>
 </div>
 """, unsafe_allow_html=True)
-
     with st.container(key="kttv_submenu"):
         active_tab = st.session_state.get("kttv_tab", "forecast")
         tabs = [
@@ -497,7 +487,6 @@ def render_kttv():
             ("rain_storm", "⛈️ Bản tin mưa dông"),
             ("heavy_rain", "🌧️ Bản tin mưa lớn"),
         ]
-
         cols = st.columns(4)
         for i, (key, label) in enumerate(tabs):
             with cols[i]:
@@ -515,22 +504,19 @@ def render_kttv():
     {label}
 </a>
 """, unsafe_allow_html=True)
-
     tab = st.session_state.get("kttv_tab", "forecast")
-
     if tab == "forecast":
         render_forecast_page()
     elif tab in ("daily", "rain_storm", "heavy_rain"):
         render_bulletins_page(tab)
-        
+
+
 def render_bulletins_page(category: str):
     cat_info = BULLETIN_CATEGORIES.get(category, {})
     icon = cat_info.get("icon", "📄")
     label = cat_info.get("label", category)
-
     st.subheader(f"{icon} {label}")
     bulletins = list_bulletins(category=category, limit=50)
-
     if not bulletins:
         st.markdown("""
 <div style='text-align:center; padding:60px 20px; color:#6d8a99;
@@ -539,20 +525,16 @@ def render_bulletins_page(category: str):
 </div>
 """, unsafe_allow_html=True)
         return
-
     viewing_key = f"viewing_bulletin_{category}"
     viewing_id = st.session_state.get(viewing_key)
-
     st.markdown(
         f"<div style='font-size:0.9rem; color:#6d8a99; margin-bottom:10px;'>"
         f"📚 <b>{len(bulletins)} bản tin</b> — mới nhất ở trên cùng</div>",
         unsafe_allow_html=True)
-
     for b in bulletins:
         bid = b["id"]
         size_kb = (b.get("file_size") or 0) / 1024
         created = (b.get("created_at") or "")[:16].replace("T", " ")
-
         col_info, col_btn = st.columns([5, 1])
         with col_info:
             st.markdown(
@@ -561,10 +543,8 @@ def render_bulletins_page(category: str):
                 f"<div class='bulletin-meta'>"
                 f"📅 {created} &nbsp;·&nbsp; "
                 f"📎 {b['filename']} ({size_kb:.0f} KB)"
-                f"{' &nbsp;·&nbsp; ' + b['description'] if b.get('description') else ''}"
                 f"</div></div>",
                 unsafe_allow_html=True)
-
         with col_btn:
             is_viewing = (viewing_id == bid)
             btn_label = "✖ Đóng" if is_viewing else "👁 Xem"
@@ -576,7 +556,6 @@ def render_bulletins_page(category: str):
                 else:
                     st.session_state[viewing_key] = bid
                 st.rerun()
-
         if is_viewing:
             bulletin = get_bulletin(bid)
             if not bulletin:
@@ -608,7 +587,6 @@ def render_placeholder(title: str, icon: str, message: str):
     <div class="h1">{icon} {title}</div>
 </div>
 """, unsafe_allow_html=True)
-
     cback, _ = st.columns([1, 5])
     with cback:
         st.markdown("""
@@ -620,7 +598,6 @@ def render_placeholder(title: str, icon: str, message: str):
     🏠 Trang chủ
 </a>
 """, unsafe_allow_html=True)
-
     st.info(f"🚧 {message}")
     st.markdown("""
     <div style='text-align:center; padding:40px; color:#78909c;'>
@@ -628,7 +605,9 @@ def render_placeholder(title: str, icon: str, message: str):
         <p>Chức năng này sẽ được cập nhật trong phiên bản tiếp theo.</p>
     </div>
     """, unsafe_allow_html=True)
-    def render_forecast_page():
+
+
+def render_forecast_page():
     st.markdown("### 📊 Dự báo số trị đa mô hình")
     st.caption("Chọn địa điểm, mô hình, số ngày → xem dự báo từ 5 mô hình "
                "ensemble + tổ hợp **trung vị (median ensemble)**.")
@@ -640,14 +619,11 @@ def render_forecast_sidebar():
         st.header("📍 Vị trí")
         input_mode = st.radio("Cách nhập:", ["Địa chỉ", "Tọa độ"],
                               key="input_mode")
-
         address = None
         lat_input, lon_input = None, None
-
         if input_mode == "Địa chỉ":
             def _on_submit():
                 st.session_state["pending_run"] = True
-
             address = st.text_input(
                 "Nhập địa chỉ (nhấn Enter):",
                 value=st.session_state.get("address_input",
@@ -661,28 +637,21 @@ def render_forecast_sidebar():
             with cc2:
                 lon_input = st.number_input("Kinh độ:", value=105.7706,
                                             format="%.4f", key="lon_input")
-
         st.header("⚙️ Tùy chọn")
-
         def _fmt_model(k):
             info = ALL_MODELS[k]
             tag = "ensemble" if info.get("ensemble") else "đơn"
             return f"{info['label']} [{tag}·{info['members']}m]"
-
         model_keys = st.multiselect(
             "Mô hình:", options=list(ALL_MODELS.keys()),
             default=list(MODELS.keys()), format_func=_fmt_model,
             key="model_select")
-
         days = st.slider("Số ngày:", 1, 15, 10, key="days_slider")
-
         st.header("📊 Đánh giá QCVN")
         enable_qcvn = st.checkbox("Bật QCVN", value=True, key="enable_qcvn")
-
         st.divider()
         run_btn = st.button("🚀 Lấy dự báo", type="primary",
                             width='stretch', key="run_btn")
-
         st.divider()
         with st.expander("🛡️ Quản trị viên", expanded=False):
             if not st.session_state.get("admin_authed"):
@@ -706,24 +675,20 @@ def render_forecast_sidebar():
                     st.session_state["admin_authed"] = False
                     st.session_state["show_admin"] = False
                     st.rerun()
-
     return (input_mode, address, lat_input, lon_input,
             model_keys, days, enable_qcvn, run_btn)
 
 
 def handle_forecast_run(input_mode, address, lat_input, lon_input,
                         model_keys, days, enable_qcvn, run_btn):
-    # Lazy import plotly
     import plotly.graph_objects as go
     from plotly.subplots import make_subplots
 
     trigger_run = run_btn or st.session_state.get("pending_run")
-
     if trigger_run:
         st.session_state["pending_run"] = False
         lat, lon, full_name = None, None, None
         force = st.session_state.pop("force_refresh", False)
-
         if input_mode == "Địa chỉ":
             with st.spinner("🔍 Đang tra cứu địa chỉ…"):
                 geo = geocode_address(address)
@@ -734,29 +699,23 @@ def handle_forecast_run(input_mode, address, lat_input, lon_input,
         else:
             lat, lon = lat_input, lon_input
             full_name = f"({lat:.4f}, {lon:.4f})"
-
         if not model_keys:
             st.warning("Chọn ít nhất 1 mô hình.")
             st.stop()
-
         if force:
             clear_api_cache()
-
         with st.spinner(f"☁️ Đang tải {len(model_keys)} mô hình…"):
             raw_models = fetch_all_models(
                 lat, lon, variables=DEFAULT_VARIABLES,
                 days=days, model_keys=model_keys, force_refresh=force)
-
         if not raw_models:
             st.error("❌ Không lấy được dữ liệu.")
             st.stop()
-
         _t = build_ensemble_dict(raw_models, "temperature_2m")
         _p = build_ensemble_dict(raw_models, "precipitation")
         if not _t and not _p:
             st.error("❌ Không parse được dữ liệu.")
             st.stop()
-
         st.session_state.update({
             "has_results": True,
             "saved_lat": lat, "saved_lon": lon,
@@ -835,7 +794,6 @@ def handle_forecast_run(input_mode, address, lat_input, lon_input,
 
     with tab1:
         st.subheader("📈 Dự báo nhiệt độ và mưa")
-
         has_median = False
         median_temp = None
         median_precip = None
@@ -852,7 +810,7 @@ def handle_forecast_run(input_mode, address, lat_input, lon_input,
                         and "median" in _mp.columns):
                     median_precip = _mp
         except Exception as e:
-            print(f"[MEDIAN] Lỗi: {e}")
+            print(f"[MEDIAN] {e}")
 
         fig = make_subplots(
             rows=2, cols=1, shared_xaxes=True,
@@ -964,11 +922,10 @@ def handle_forecast_run(input_mode, address, lat_input, lon_input,
         if has_median:
             st.success(
                 f"🌟 **Tổ hợp trung vị (Median Ensemble)** từ "
-                f"{len(temp_ensembles)} mô hình chính — đường đen nét đứt.")
+                f"{len(temp_ensembles)} mô hình chính.")
 
         st.subheader(f"📌 Tóm tắt dự báo {days} ngày tới")
         c1, c2, c3, c4 = st.columns(4)
-
         if temp_ensembles:
             vals, vals_min = [], []
             for d in temp_ensembles.values():
@@ -984,7 +941,6 @@ def handle_forecast_run(input_mode, address, lat_input, lon_input,
                 c1.metric("🌡️ T cao nhất", f"{max(vals):.1f} °C")
             if vals_min:
                 c2.metric("❄️ T thấp nhất", f"{min(vals_min):.1f} °C")
-
         if precip_ensembles:
             r_tot, r_pk = [], []
             for d in precip_ensembles.values():
@@ -1041,7 +997,6 @@ def handle_forecast_run(input_mode, address, lat_input, lon_input,
                                 format_func=lambda k: ALL_MODELS[k]["label"],
                                 horizontal=True, key="hourly_model_radio",
                                 label_visibility="collapsed")
-
             try:
                 _run_utc = get_model_run_time(selected)
                 _start_vn = _run_utc.astimezone(_VN_TZ).replace(tzinfo=None)
@@ -1052,13 +1007,10 @@ def handle_forecast_run(input_mode, address, lat_input, lon_input,
                     datetime.now(_VN_TZ).replace(tzinfo=None)
                 ).floor("h") - pd.Timedelta(hours=1)
                 _start_str = start.strftime("%d/%m/%Y %H:%M")
-
             st.caption(f"🛰️ **{ALL_MODELS[selected]['label']}** — "
                        f"Hiển thị từ **{_start_str} VN** trở đi")
-
             tdf = temp_ensembles.get(selected)
             pdf = precip_ensembles.get(selected)
-
             if tdf is not None and not tdf.empty:
                 try:
                     _tdf_num = tdf.apply(pd.to_numeric, errors="coerce")
@@ -1069,7 +1021,6 @@ def handle_forecast_run(input_mode, address, lat_input, lon_input,
                     tmean = pd.Series(dtype=float)
             else:
                 tmean = pd.Series(dtype=float)
-
             if pdf is not None and not pdf.empty:
                 try:
                     _pdf_num = pdf.apply(pd.to_numeric, errors="coerce")
@@ -1087,7 +1038,6 @@ def handle_forecast_run(input_mode, address, lat_input, lon_input,
             else:
                 pmean = pd.Series(0.0, index=tmean.index)
                 rprob = pd.Series(0.0, index=tmean.index)
-
             df = pd.DataFrame({
                 "time": tmean.index,
                 "temp": pd.to_numeric(tmean.values, errors="coerce"),
@@ -1100,7 +1050,6 @@ def handle_forecast_run(input_mode, address, lat_input, lon_input,
             df["rain_prob"] = df["rain_prob"].astype(float)
             df = df[df["time"] >= start].sort_values("time").reset_index(drop=True)
             df = df.dropna(subset=["temp"]).reset_index(drop=True)
-
             if df.empty:
                 st.warning("Không có dữ liệu.")
             else:
@@ -1108,7 +1057,6 @@ def handle_forecast_run(input_mode, address, lat_input, lon_input,
                     lambda r: classify_weather_phenomenon(
                         r["time"].hour, r["rain"], r["temp"]), axis=1)
                 df["time_str"] = df["time"].dt.strftime("%d/%m %H:%M")
-
                 disp = pd.DataFrame({
                     "Ngày/Giờ": df["time_str"].values,
                     "Hiện tượng": df["phenomenon"].values,
@@ -1116,7 +1064,6 @@ def handle_forecast_run(input_mode, address, lat_input, lon_input,
                     "Mưa 1h (mm)": df["rain"].round(2).values,
                     "Xác suất mưa (%)": (df["rain_prob"] * 100)
                         .round(0).astype(int).values})
-
                 st.caption(f"📊 {len(disp)} giờ")
                 render_df = pd.DataFrame({
                     "time_str": df["time_str"].values,
@@ -1125,7 +1072,6 @@ def handle_forecast_run(input_mode, address, lat_input, lon_input,
                     "rain": df["rain"].round(2).values,
                     "rain_prob_pct": (df["rain_prob"] * 100).round(0).values})
                 _render_hourly_table(render_df)
-
                 csv_buf = io.StringIO()
                 disp.to_csv(csv_buf, index=False, encoding="utf-8-sig")
                 st.download_button(
@@ -1154,7 +1100,6 @@ def handle_forecast_run(input_mode, address, lat_input, lon_input,
                         obs_precip = obs_df.assign(observed=obs_df["precipitation"])
                     elif "observed" in obs_df.columns and obs_temp is None:
                         obs_precip = obs_df
-
                     all_eval = []
                     for mk in model_keys:
                         if mk in temp_ensembles and obs_temp is not None:
@@ -1202,7 +1147,9 @@ def handle_forecast_run(input_mode, address, lat_input, lon_input,
             st.info("Chưa có dữ liệu.")
         else:
             st.dataframe(hist, width='stretch', hide_index=True)
-            page = st.session_state.get("page", "home")
+
+
+page = st.session_state.get("page", "home")
 
 if page == "kttv" and st.session_state.get("kttv_tab") == "forecast":
     sidebar_data = render_forecast_sidebar()
