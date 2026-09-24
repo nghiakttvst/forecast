@@ -196,15 +196,6 @@ st.markdown("""
     /* ============================================
        CHO PHÉP STICKY HOẠT ĐỘNG
        ============================================ */
-    [data-testid="stAppViewContainer"],
-    [data-testid="stAppViewContainer"] > .main,
-    [data-testid="stMain"],
-    section.main,
-    .main .block-container,
-    [data-testid="stMainBlockContainer"] {
-        overflow: visible !important;
-        overflow-y: visible !important;
-    }
 
     .stApp {
         background: linear-gradient(180deg, #eaf4fb 0%, #f4faff 45%, #fffaf0 100%);
@@ -238,8 +229,8 @@ st.markdown("""
     .stButton > button { border-radius: 10px; transition: all 0.25s ease; }
     .stButton > button:hover { transform: translateY(-1px); }
 
-    /* ============================================
-       STICKY DÒNG 1: Nút Trang chủ (trái) + Tiêu đề (phải)
+       /* ============================================
+       STICKY DÒNG 1: Nút Trang chủ + Tiêu đề
        ============================================ */
     .st-key-kttv_top {
         position: sticky !important;
@@ -247,7 +238,6 @@ st.markdown("""
         z-index: 1000 !important;
         background: #eaf4fb !important;
         padding: 12px 0 6px 0 !important;
-        margin: -1rem 0 0 0 !important;
         border-bottom: 1px solid rgba(74,159,224,0.15) !important;
     }
 
@@ -409,24 +399,91 @@ st.markdown("""
 components.html("""
 <script>
 (function() {
+    // ============================================
+    // 1. Ẩn toolbar Streamlit Cloud
+    // ============================================
     const S = ['[data-testid="stStatusWidget"]',
                '[data-testid="stAppDeployButton"]',
                '[data-testid="stManageAppButton"]',
                '[data-testid="stToolbar"]',
                '[data-testid="stHeader"]',
                '[class*="viewerBadge"]', '[class*="ManageApp"]'];
-    function kill() {
-        S.forEach(s => document.querySelectorAll(s).forEach(el => el.remove()));
-        document.querySelectorAll('iframe').forEach(f => {
+
+    function killToolbar() {
+        S.forEach(function(s) {
+            document.querySelectorAll(s).forEach(function(el) { el.remove(); });
+        });
+        document.querySelectorAll('iframe').forEach(function(f) {
             const r = f.getBoundingClientRect();
             if (r.bottom > window.innerHeight - 100
                 && r.right > window.innerWidth - 300) f.remove();
         });
     }
-    kill();
-    [500, 1500, 3000].forEach(t => setTimeout(kill, t));
-    new MutationObserver(kill).observe(document.body,
-        {childList:true, subtree:true});
+
+    // ============================================
+    // 2. Cho phép click toàn bộ thẻ card
+    // ============================================
+    function makeCardsClickable() {
+        const map = {
+            'zone_kttv':     'Khí tượng',
+            'zone_thuyvan':  'Thủy văn',
+            'zone_mangluoi': 'Mạng lưới'
+        };
+
+        Object.keys(map).forEach(function(containerKey) {
+            const container = document.querySelector('.st-key-' + containerKey);
+            if (!container) return;
+
+            const btn = container.querySelector('button');
+            const card = container.querySelector('.zone-card');
+            if (!btn || !card) return;
+
+            // Gắn click handler nếu chưa có
+            if (!card.dataset.clickBound) {
+                card.style.cursor = 'pointer';
+                card.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    btn.click();
+                });
+                card.dataset.clickBound = '1';
+            }
+
+            // Đảm bảo card nằm trên để nhận click
+            card.style.position = 'relative';
+            card.style.zIndex = '101';
+
+            // Ẩn nút đi (đã bị che bởi card)
+            const btnWrapper = btn.closest('.stButton');
+            if (btnWrapper) {
+                btnWrapper.style.position = 'absolute';
+                btnWrapper.style.top = '0';
+                btnWrapper.style.left = '0';
+                btnWrapper.style.width = '100%';
+                btnWrapper.style.height = '100%';
+                btnWrapper.style.opacity = '0';
+                btnWrapper.style.pointerEvents = 'none';
+                btnWrapper.style.zIndex = '100';
+            }
+        });
+    }
+
+    // Chạy nhiều lần để bắt DOM thay đổi
+    function runAll() {
+        killToolbar();
+        makeCardsClickable();
+    }
+
+    runAll();
+    [300, 800, 1500, 3000, 5000].forEach(function(t) {
+        setTimeout(runAll, t);
+    });
+
+    // Theo dõi DOM thay đổi
+    new MutationObserver(function() {
+        killToolbar();
+        makeCardsClickable();
+    }).observe(document.body, {childList: true, subtree: true});
 })();
 </script>
 """, height=0, width=0)
