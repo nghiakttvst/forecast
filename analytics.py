@@ -1,10 +1,11 @@
 """
-Module theo dõi lượt truy cập — hỗ trợ Supabase/SQLite.
+Module theo dõi truy cập — có cache cho stats.
 """
 
 import hashlib
 from datetime import datetime, timedelta
 from typing import Dict, List
+import streamlit as st
 
 from db import get_connection, execute, fetchall, fetchone, is_postgres
 
@@ -60,7 +61,9 @@ def _count(conn, sql, params=None):
     return list(row.values())[0] or 0
 
 
+@st.cache_data(ttl=120, show_spinner=False)
 def get_stats() -> Dict:
+    """Cached 2 phút."""
     _ensure_visits_table()
     now = datetime.utcnow()
     today_start = now.replace(hour=0, minute=0, second=0).isoformat()
@@ -97,7 +100,9 @@ def get_stats() -> Dict:
     return stats
 
 
+@st.cache_data(ttl=300, show_spinner=False)
 def get_visits_by_day(days: int = 30) -> List[Dict]:
+    """Cached 5 phút."""
     _ensure_visits_table()
     start = (datetime.utcnow() - timedelta(days=days)).isoformat()
     with get_connection() as conn:
@@ -113,7 +118,9 @@ def get_visits_by_day(days: int = 30) -> List[Dict]:
              "unique_sessions": r["unique_sessions"]} for r in rows]
 
 
+@st.cache_data(ttl=60, show_spinner=False)
 def get_recent_visits(limit: int = 100) -> List[Dict]:
+    """Cached 1 phút."""
     _ensure_visits_table()
     with get_connection() as conn:
         return fetchall(conn, """
@@ -122,7 +129,9 @@ def get_recent_visits(limit: int = 100) -> List[Dict]:
         """, (limit,))
 
 
+@st.cache_data(ttl=300, show_spinner=False)
 def get_top_pages(limit: int = 10) -> List[Dict]:
+    """Cached 5 phút."""
     _ensure_visits_table()
     with get_connection() as conn:
         rows = fetchall(conn, """

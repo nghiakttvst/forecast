@@ -5,3 +5,4 @@ numpy>=1.26.0,<3.0.0
 plotly>=5.22.0
 geopy>=2.4.0
 psycopg[binary]>=3.1.0
+psycopg-pool>=3.1.0

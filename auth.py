@@ -1,11 +1,12 @@
 """
-Module xác thực người dùng — hỗ trợ Supabase/SQLite.
+Module xác thực người dùng.
 """
 
 import hashlib
 import os
 from datetime import datetime
 from typing import Dict, List
+import streamlit as st
 
 from db import get_connection, execute, fetchall, fetchone, is_postgres
 
@@ -82,6 +83,7 @@ def register_user(username: str, password: str, email: str = "",
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """, (username, pwd_hash, password, salt, email, full_name,
                   role, datetime.utcnow().isoformat()))
+            list_users.clear()
             return {"success": True, "message": "Đăng ký thành công."}
         except Exception as e:
             return {"success": False, "message": f"Lỗi: {e}"}
@@ -126,6 +128,7 @@ def change_password(user_id: int, old_password: str, new_password: str) -> Dict:
             UPDATE users SET password_hash = ?, password_plain = ?, salt = ?
             WHERE id = ?
         """, (new_hash, new_password, new_salt, user_id))
+        list_users.clear()
         return {"success": True, "message": "Đổi mật khẩu thành công."}
 
 
@@ -140,10 +143,13 @@ def admin_reset_password(user_id: int, new_password: str) -> Dict:
             UPDATE users SET password_hash = ?, password_plain = ?, salt = ?
             WHERE id = ?
         """, (new_hash, new_password, new_salt, user_id))
+        list_users.clear()
         return {"success": True, "message": "Đã đặt lại mật khẩu."}
 
 
+@st.cache_data(ttl=60, show_spinner=False)
 def list_users() -> List[Dict]:
+    """Cached 60 giây."""
     _ensure_users_table()
     with get_connection() as conn:
         return fetchall(conn, """
@@ -158,6 +164,7 @@ def set_user_active(user_id: int, active: bool) -> bool:
     with get_connection() as conn:
         execute(conn, "UPDATE users SET is_active = ? WHERE id = ?",
                 (1 if active else 0, user_id))
+    list_users.clear()
     return True
 
 
@@ -165,6 +172,7 @@ def delete_user(user_id: int) -> bool:
     _ensure_users_table()
     with get_connection() as conn:
         execute(conn, "DELETE FROM users WHERE id = ?", (user_id,))
+    list_users.clear()
     return True
 
 

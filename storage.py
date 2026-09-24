@@ -1,5 +1,5 @@
 """
-Module lưu trữ dự báo, đánh giá, ghim, bản tin.
+Module lưu trữ — có cache cho các query đọc.
 """
 
 import json
@@ -7,6 +7,7 @@ import base64
 from datetime import datetime
 from typing import Dict, List
 import pandas as pd
+import streamlit as st
 
 from db import get_connection, execute, fetchall, fetchone, is_postgres
 
@@ -99,7 +100,9 @@ def save_evaluation(location, lat, lon, model_key, variable, summary):
               summary.get("n_points")))
 
 
+@st.cache_data(ttl=60, show_spinner=False)
 def load_evaluations(location=None, model_key=None, limit=500) -> pd.DataFrame:
+    """Cached 60 giây."""
     _ensure_db()
     with get_connection() as conn:
         rows = fetchall(conn,
@@ -121,10 +124,14 @@ def save_favorite(address: str, display: str, lat: float, lon: float) -> bool:
             INSERT INTO favorites (created_at, address, display, lat, lon)
             VALUES (?, ?, ?, ?, ?)
         """, (datetime.utcnow().isoformat(), address, display, lat, lon))
-        return True
+    # Xóa cache sau khi ghi
+    load_favorites.clear()
+    return True
 
 
+@st.cache_data(ttl=30, show_spinner=False)
 def load_favorites() -> List[Dict]:
+    """Cached 30 giây."""
     _ensure_db()
     with get_connection() as conn:
         return fetchall(conn,
@@ -136,7 +143,8 @@ def delete_favorite(fav_id: int) -> bool:
     _ensure_db()
     with get_connection() as conn:
         execute(conn, "DELETE FROM favorites WHERE id = ?", (fav_id,))
-        return True
+    load_favorites.clear()
+    return True
 
 
 # ============================================================
@@ -160,7 +168,7 @@ def save_bulletin(category: str, title: str, description: str,
             """, (datetime.utcnow().isoformat(), category, title,
                   description, filename, file_size, file_b64, uploader))
             row = cur.fetchone()
-            return row["id"] if row else 0
+            new_id = row["id"] if row else 0
         else:
             execute(conn, """
                 INSERT INTO bulletins
@@ -171,10 +179,16 @@ def save_bulletin(category: str, title: str, description: str,
                   description, filename, file_size, file_b64, uploader))
             cur = execute(conn, "SELECT last_insert_rowid() as id")
             row = cur.fetchone()
-            return row["id"] if row else 0
+            new_id = row["id"] if row else 0
+
+    # Xóa cache
+    list_bulletins.clear()
+    return new_id
 
 
+@st.cache_data(ttl=30, show_spinner=False)
 def list_bulletins(category: str = None, limit: int = 50) -> list:
+    """Cached 30 giây."""
     _ensure_db()
     with get_connection() as conn:
         if category:
@@ -191,7 +205,9 @@ def list_bulletins(category: str = None, limit: int = 50) -> list:
         """, (limit,))
 
 
+@st.cache_data(ttl=300, show_spinner=False)
 def get_bulletin(bulletin_id: int):
+    """Cached 5 phút — ít thay đổi."""
     _ensure_db()
     with get_connection() as conn:
         return fetchone(conn, "SELECT * FROM bulletins WHERE id = ?",
@@ -202,4 +218,6 @@ def delete_bulletin(bulletin_id: int) -> bool:
     _ensure_db()
     with get_connection() as conn:
         execute(conn, "DELETE FROM bulletins WHERE id = ?", (bulletin_id,))
-        return True
+    list_bulletins.clear()
+    get_bulletin.clear()
+    return True

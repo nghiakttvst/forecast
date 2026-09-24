@@ -79,11 +79,84 @@ def _adapt_sql(sql: str) -> str:
     return sql.replace("?", "%s") if _USE_POSTGRES else sql
 
 
+# ============================================================
+# CONNECTION POOL — Giảm latency cho Supabase
+# ============================================================
+_pool = None
+
+
+def _get_pool():
+    """Tạo connection pool cho Postgres (chỉ khởi tạo 1 lần)."""
+    global _pool
+    if _pool is not None:
+        return _pool
+
+    if not _USE_POSTGRES or not _DRIVER:
+        return None
+
+    try:
+        dsn = DATABASE_URL.strip()
+        if "sslmode" not in dsn:
+            sep = "&" if "?" in dsn else "?"
+            dsn = f"{dsn}{sep}sslmode=require"
+
+        if _DRIVER == "psycopg3":
+            from psycopg_pool import ConnectionPool
+            _pool = ConnectionPool(
+                conninfo=dsn,
+                min_size=1,
+                max_size=5,
+                timeout=30,
+                kwargs={"prepare_threshold": None},
+            )
+            print("[DB] ✅ Đã tạo connection pool (psycopg3)")
+            return _pool
+        else:
+            from psycopg2 import pool as pg_pool
+            _pool = pg_pool.SimpleConnectionPool(
+                minconn=1, maxconn=5, dsn=dsn, connect_timeout=15)
+            print("[DB] ✅ Đã tạo connection pool (psycopg2)")
+            return _pool
+    except ImportError:
+        print("[DB] ⚠️ Chưa cài psycopg_pool → dùng connect trực tiếp")
+        return None
+    except Exception as e:
+        print(f"[DB] ⚠️ Lỗi tạo pool: {e}")
+        return None
+
+
 @contextmanager
 def get_connection():
     _test_postgres_connection()
 
     if _USE_POSTGRES and _DRIVER:
+        pool = _get_pool()
+        if pool is not None:
+            # Dùng pool
+            try:
+                if _DRIVER == "psycopg3":
+                    with pool.connection() as conn:
+                        try:
+                            yield conn
+                            conn.commit()
+                        except Exception:
+                            conn.rollback()
+                            raise
+                else:
+                    conn = pool.getconn()
+                    try:
+                        yield conn
+                        conn.commit()
+                    except Exception:
+                        conn.rollback()
+                        raise
+                    finally:
+                        pool.putconn(conn)
+                return
+            except Exception as e:
+                print(f"[DB] ⚠️ Pool lỗi: {e} → dùng connect trực tiếp")
+
+        # Fallback: connect trực tiếp
         dsn = DATABASE_URL.strip()
         if "sslmode" not in dsn:
             sep = "&" if "?" in dsn else "?"
@@ -109,6 +182,7 @@ def get_connection():
             print(f"[DB] ⚠️ Postgres runtime lỗi: {e}")
             print(f"[DB] → Fallback SQLite")
 
+    # SQLite fallback
     Path(_SQLITE_PATH).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(_SQLITE_PATH, timeout=10)
     conn.row_factory = sqlite3.Row
