@@ -1,4 +1,4 @@
-﻿"""
+"""
 Đài KTTV TP. Cần Thơ — Ứng dụng dự báo đa mô hình
 """
 
