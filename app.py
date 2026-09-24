@@ -501,7 +501,7 @@ def render_home():
 </div>
 """, unsafe_allow_html=True)
             if st.button("Khí tượng", key="btn_go_kttv",
-                         use_container_width=True,
+                         width='stretch',
                          label_visibility="collapsed"):
                 navigate("kttv", "forecast")
 
@@ -519,7 +519,7 @@ def render_home():
 </div>
 """, unsafe_allow_html=True)
             if st.button("Thủy văn", key="btn_go_tv",
-                         use_container_width=True,
+                         width='stretch',
                          label_visibility="collapsed"):
                 navigate("thuyvan")
 
@@ -537,7 +537,7 @@ def render_home():
 </div>
 """, unsafe_allow_html=True)
             if st.button("Mạng lưới", key="btn_go_ml",
-                         use_container_width=True,
+                         width='stretch',
                          label_visibility="collapsed"):
                 navigate("network")
                 # ============================================================
@@ -558,7 +558,7 @@ def render_kttv():
             st.markdown("<div style='height:20px;'></div>",
                         unsafe_allow_html=True)
             if st.button("← Trang chủ", key="btn_back_home",
-                         use_container_width=True):
+                         width='stretch'):
                 navigate("home")
 
     # ---------- STICKY BOTTOM: Submenu ----------
@@ -581,7 +581,7 @@ def render_kttv():
                 is_active = st.session_state.get("kttv_tab") == key
                 btn_type = "primary" if is_active else "secondary"
                 if st.button(label, key=f"kttv_tab_{key}",
-                             use_container_width=True, type=btn_type):
+                             width='stretch', type=btn_type):
                     st.session_state["kttv_tab"] = key
                     st.rerun()
 
@@ -645,7 +645,7 @@ def render_bulletins_page(category: str):
             btn_label = "✖ Đóng" if is_viewing else "👁 Xem"
             btn_type = "primary" if is_viewing else "secondary"
             if st.button(btn_label, key=f"view_bul_{bid}",
-                         use_container_width=True, type=btn_type):
+                         width='stretch', type=btn_type):
                 if is_viewing:
                     st.session_state[viewing_key] = None
                 else:
@@ -665,7 +665,7 @@ def render_bulletins_page(category: str):
                         data=pdf_bytes,
                         file_name=bulletin["filename"],
                         mime="application/pdf",
-                        use_container_width=True,
+                        width='stretch',
                         key=f"dl_bul_{bid}")
 
                     pdf_b64 = base64.b64encode(pdf_bytes).decode("ascii")
@@ -757,7 +757,7 @@ def render_forecast_sidebar():
 
         st.divider()
         run_btn = st.button("🚀 Lấy dự báo", type="primary",
-                            use_container_width=True, key="run_btn")
+                            width='stretch', key="run_btn")
 
         st.divider()
         with st.expander("🛡️ Quản trị viên", expanded=False):
@@ -765,7 +765,7 @@ def render_forecast_sidebar():
                 pwd = st.text_input("Mật khẩu:", type="password",
                                     key="admin_pwd_input")
                 if st.button("🔓 Đăng nhập", key="admin_login_btn",
-                             use_container_width=True):
+                             width='stretch'):
                     if pwd == ADMIN_PASSWORD:
                         st.session_state["admin_authed"] = True
                         st.rerun()
@@ -774,11 +774,11 @@ def render_forecast_sidebar():
             else:
                 st.success("✅ Đã xác thực")
                 if st.button("📊 Mở Admin", key="admin_open_btn",
-                             use_container_width=True):
+                             width='stretch'):
                     st.session_state["show_admin"] = True
                     st.rerun()
                 if st.button("🚪 Đăng xuất", key="admin_logout_btn",
-                             use_container_width=True):
+                             width='stretch'):
                     st.session_state["admin_authed"] = False
                     st.session_state["show_admin"] = False
                     st.rerun()
@@ -866,7 +866,7 @@ def handle_forecast_run(input_mode, address, lat_input, lon_input,
 
     c1, c2 = st.columns([4, 1])
     with c2:
-        if st.button("🔄 Làm mới", use_container_width=True, key="btn_refresh"):
+        if st.button("🔄 Làm mới", width='stretch', key="btn_refresh"):
             st.session_state["force_refresh"] = True
             st.session_state["pending_run"] = True
             st.rerun()
@@ -1038,7 +1038,7 @@ def handle_forecast_run(input_mode, address, lat_input, lon_input,
             if ann.text and ("Nhiệt độ" in ann.text or "Mưa 1h" in ann.text):
                 ann.update(yshift=15, font=dict(size=15))
 
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
 
         if has_median:
             st.success(
@@ -1112,7 +1112,7 @@ def handle_forecast_run(input_mode, address, lat_input, lon_input,
                 height=500, hovermode="x unified",
                 xaxis_title="Thời gian", yaxis_title=unit,
                 legend=dict(orientation="h", y=1.02))
-            st.plotly_chart(fig_cmp, use_container_width=True)
+            st.plotly_chart(fig_cmp, width='stretch')
 
     # ================================================
     # TAB 3: THEO GIỜ
@@ -1291,7 +1291,7 @@ def handle_forecast_run(input_mode, address, lat_input, lon_input,
                                 pass
                     if all_eval:
                         st.dataframe(pd.DataFrame(all_eval),
-                                     use_container_width=True,
+                                     width='stretch',
                                      hide_index=True)
                     else:
                         st.warning("Không đủ dữ liệu.")
@@ -1311,7 +1311,7 @@ def handle_forecast_run(input_mode, address, lat_input, lon_input,
         if hist.empty:
             st.info("Chưa có dữ liệu.")
         else:
-            st.dataframe(hist, use_container_width=True, hide_index=True)
+            st.dataframe(hist, width='stretch', hide_index=True)
             # ============================================================
 # MAIN ROUTER
 # ============================================================
@@ -1324,7 +1324,7 @@ if page == "kttv" and st.session_state.get("kttv_tab") == "forecast":
 elif page == "kttv":
     with st.sidebar:
         st.markdown("### 📂 Danh mục KTTV")
-        if st.button("📊 Dự báo số trị", use_container_width=True,
+        if st.button("📊 Dự báo số trị", width='stretch',
                      key="sb_go_forecast"):
             st.session_state["kttv_tab"] = "forecast"
             st.rerun()
@@ -1332,11 +1332,11 @@ elif page == "kttv":
             if cat_key == "hydro":
                 continue
             if st.button(f"{cat_info['icon']} {cat_info['label']}",
-                         use_container_width=True, key=f"sb_{cat_key}"):
+                         width='stretch', key=f"sb_{cat_key}"):
                 st.session_state["kttv_tab"] = cat_key
                 st.rerun()
         st.divider()
-        if st.button("← Trang chủ", use_container_width=True, key="sb_home"):
+        if st.button("← Trang chủ", width='stretch', key="sb_home"):
             navigate("home")
 
 
