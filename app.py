@@ -461,7 +461,7 @@ def render_home():
     </div>
 </a>
 """, unsafe_allow_html=True)
-        def render_kttv():
+def render_kttv():
     with st.container(key="kttv_top"):
         col_back, col_title = st.columns([1, 4], gap="medium")
 
@@ -522,8 +522,7 @@ def render_home():
         render_forecast_page()
     elif tab in ("daily", "rain_storm", "heavy_rain"):
         render_bulletins_page(tab)
-
-
+        
 def render_bulletins_page(category: str):
     cat_info = BULLETIN_CATEGORIES.get(category, {})
     icon = cat_info.get("icon", "📄")
