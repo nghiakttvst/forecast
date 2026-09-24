@@ -43,9 +43,6 @@ from analytics import log_visit, get_stats
 from admin import render_admin_panel
 
 
-# ============================================================
-# HẰNG SỐ
-# ============================================================
 BAR_MAX_MODELS = 3
 AUTO_REFRESH_MIN = 60
 ADMIN_PASSWORD = "kttv2026"
@@ -53,20 +50,16 @@ _VN_TZ = timezone(timedelta(hours=7))
 
 
 # ============================================================
-# HELPER: MÀU GRADIENT THEO % XÁC SUẤT MƯA
+# HELPER: MÀU GRADIENT % MƯA
 # ============================================================
 def _pct_to_color(pct: float) -> str:
-    """0% → xanh lá | 25% → xanh vàng | 50% → vàng | 75% → cam | 90% → đỏ | 100% → tím"""
     if pct <= 0:
         return "#e0e0e0"
     pct = max(0.0, min(100.0, float(pct)))
     anchors = [
-        (0,   ( 76, 175,  80)),
-        (25,  (139, 195,  74)),
-        (50,  (255, 193,   7)),
-        (75,  (255,  87,  34)),
-        (90,  (244,  67,  54)),
-        (100, (156,  39, 176)),
+        (0,   ( 76, 175,  80)), (25,  (139, 195,  74)),
+        (50,  (255, 193,   7)), (75,  (255,  87,  34)),
+        (90,  (244,  67,  54)), (100, (156,  39, 176)),
     ]
     for i in range(len(anchors) - 1):
         p1, c1 = anchors[i]
@@ -81,7 +74,6 @@ def _pct_to_color(pct: float) -> str:
 
 
 def _render_hourly_table(df: pd.DataFrame):
-    """Render bảng giờ với cột xác suất mưa dạng thanh gradient màu."""
     rows_html = ""
     for _, r in df.iterrows():
         pct = int(round(float(r["rain_prob_pct"])))
@@ -174,18 +166,16 @@ st.markdown("""
         font-family: 'Material Symbols Rounded' !important;
     }
 
-    /* Ẩn toolbar Streamlit Cloud */
     [data-testid="stToolbar"], [data-testid="stStatusWidget"],
     [data-testid="stAppDeployButton"], [data-testid="stManageAppButton"],
     [data-testid="stAppToolbar"], [data-testid="stDecoration"],
     [class*="viewerBadge"], [class*="ManageApp"],
     header[data-testid="stHeader"], button[kind="header"] {
         display: none !important; visibility: hidden !important;
-        height: 0 !important; pointer-events: none !important;
+        height: 0 !important;
     }
     iframe[src*="streamlit.io"] { display: none !important; }
 
-    /* Ẩn nút collapse sidebar */
     [data-testid="stSidebarCollapseButton"],
     [data-testid="stSidebarCollapsedControl"] { display: none !important; }
     section[data-testid="stSidebar"] {
@@ -193,19 +183,12 @@ st.markdown("""
         min-width: 300px !important; width: 300px !important;
     }
 
-    /* ============================================
-       CHO PHÉP STICKY HOẠT ĐỘNG
-       ============================================ */
-
     .stApp {
         background: linear-gradient(180deg, #eaf4fb 0%, #f4faff 45%, #fffaf0 100%);
         background-attachment: fixed;
     }
     .block-container { padding: 1rem 1rem 5rem !important; }
 
-    /* ============================================
-       BANNER (trang chủ)
-       ============================================ */
     .header-banner {
         background: linear-gradient(120deg, #4a9fe0 0%, #5cb8d9 50%, #6dc8c2 100%);
         border-radius: 18px; padding: 20px 28px;
@@ -229,35 +212,19 @@ st.markdown("""
     .stButton > button { border-radius: 10px; transition: all 0.25s ease; }
     .stButton > button:hover { transform: translateY(-1px); }
 
-       /* ============================================
-       STICKY DÒNG 1: Nút Trang chủ + Tiêu đề
-       ============================================ */
-    .st-key-kttv_top {
-        position: sticky !important;
-        top: 0 !important;
-        z-index: 1000 !important;
-        background: #eaf4fb !important;
-        padding: 12px 0 6px 0 !important;
-        border-bottom: 1px solid rgba(74,159,224,0.15) !important;
+    /* === CARDS — dùng thẻ <a> === */
+    .zone-card-link {
+        text-decoration: none !important;
+        color: inherit !important;
+        display: block !important;
+        height: 100% !important;
+        transition: all 0.3s ease !important;
     }
-
-    /* ============================================
-       STICKY DÒNG 2: Submenu
-       ============================================ */
-    .st-key-kttv_submenu {
-        position: sticky !important;
-        top: 68px !important;
-        z-index: 999 !important;
-        background: #eaf4fb !important;
-        padding: 8px 0 12px 0 !important;
-        margin: 0 0 12px 0 !important;
-        border-bottom: 2px solid rgba(74,159,224,0.28) !important;
-        box-shadow: 0 4px 10px rgba(74,159,224,0.06) !important;
+    .zone-card-link:hover {
+        text-decoration: none !important;
+        color: inherit !important;
+        transform: translateY(-6px) !important;
     }
-
-    /* ============================================
-       THẺ CARD TRANG CHỦ — CLICK TOÀN BỘ (kể cả icon)
-       ============================================ */
     .zone-card {
         border-radius: 18px;
         padding: 24px 20px;
@@ -281,57 +248,22 @@ st.markdown("""
     }
     .zone-desc { font-size: 0.9rem; color: #455a64; line-height: 1.5; }
 
-    /* Container thẻ: position relative để làm anchor cho nút ẩn */
-    .st-key-zone_kttv,
-    .st-key-zone_thuyvan,
-    .st-key-zone_mangluoi {
-        position: relative !important;
-        isolation: isolate;
-    }
-
-    /* Nút ẩn phủ TOÀN BỘ thẻ, bao gồm cả icon */
-    .st-key-zone_kttv .stButton,
-    .st-key-zone_thuyvan .stButton,
-    .st-key-zone_mangluoi .stButton {
-        position: absolute !important;
-        top: 0 !important;
-        left: 0 !important;
-        right: 0 !important;
-        bottom: 0 !important;
-        width: 100% !important;
-        height: 100% !important;
-        margin: 0 !important;
-        padding: 0 !important;
-        z-index: 100 !important;
-        opacity: 0 !important;
-    }
-
-    .st-key-zone_kttv .stButton > button,
-    .st-key-zone_thuyvan .stButton > button,
-    .st-key-zone_mangluoi .stButton > button {
-        width: 100% !important;
-        height: 100% !important;
-        min-height: 280px !important;
-        background: transparent !important;
-        border: none !important;
-        cursor: pointer !important;
-        margin: 0 !important;
-        padding: 0 !important;
-        box-shadow: none !important;
-    }
-
-    /* Hover effect khi di chuột vào thẻ */
-    .st-key-zone_kttv:hover .zone-card,
-    .st-key-zone_thuyvan:hover .zone-card,
-    .st-key-zone_mangluoi:hover .zone-card {
-        transform: translateY(-6px);
+    .zone-card-link:hover .zone-card {
         box-shadow: 0 12px 30px rgba(0,60,120,0.20);
         border-color: #4a9fe0;
     }
 
-    /* ============================================
-       VISIT WIDGET
-       ============================================ */
+    /* === STICKY WRAPPER === */
+    .kttv-sticky-wrap {
+        position: sticky;
+        top: 0;
+        z-index: 999;
+        background: #eaf4fb;
+        padding: 12px 0 8px 0;
+        border-bottom: 1px solid rgba(74,159,224,0.15);
+    }
+
+    /* === VISIT WIDGET === */
     .visit-widget {
         position: fixed; bottom: 12px; right: 12px;
         background: linear-gradient(135deg, #4a9fe0 0%, #6dc8c2 100%);
@@ -348,32 +280,20 @@ st.markdown("""
         display: inline-block; margin-right: 2px;
     }
 
-    /* ============================================
-       BULLETIN LIST
-       ============================================ */
     .bulletin-item {
-        background: #ffffff;
-        border-radius: 12px;
-        padding: 14px 20px;
-        margin-bottom: 10px;
+        background: #ffffff; border-radius: 12px;
+        padding: 14px 20px; margin-bottom: 10px;
         border-left: 5px solid #4a9fe0;
         box-shadow: 0 2px 8px rgba(74,159,224,0.08);
-        transition: all 0.25s ease;
     }
     .bulletin-item:hover {
         box-shadow: 0 6px 18px rgba(74,159,224,0.20);
-        transform: translateX(4px);
         border-left-color: #ea4335;
     }
-    .bulletin-title {
-        font-size: 1rem; font-weight: 700;
-        color: #0e4a7b; margin: 0 0 4px 0;
-    }
+    .bulletin-title { font-size: 1rem; font-weight: 700;
+                      color: #0e4a7b; margin: 0 0 4px 0; }
     .bulletin-meta { font-size: 0.82rem; color: #6d8a99; }
 
-    /* ============================================
-       FOOTER
-       ============================================ */
     .footer {
         margin-top: 40px; padding: 20px 24px;
         background: linear-gradient(90deg,
@@ -389,101 +309,87 @@ st.markdown("""
         display: flex; align-items: center; justify-content: center;
         flex-wrap: wrap; gap: 8px; margin: 5px 0;
     }
-    .footer-copyright {
-        margin-top: 12px; font-size: 0.8rem; color: #6d8a99;
-    }
+    .footer-copyright { margin-top: 12px; font-size: 0.8rem; color: #6d8a99; }
 </style>
 """, unsafe_allow_html=True)
 
 
+# ============================================================
+# JS — Thao tác DOM parent (ẩn toolbar + force sticky)
+# ============================================================
 components.html("""
 <script>
 (function() {
-    // ============================================
-    // 1. Ẩn toolbar Streamlit Cloud
-    // ============================================
-    const S = ['[data-testid="stStatusWidget"]',
-               '[data-testid="stAppDeployButton"]',
-               '[data-testid="stManageAppButton"]',
-               '[data-testid="stToolbar"]',
-               '[data-testid="stHeader"]',
-               '[class*="viewerBadge"]', '[class*="ManageApp"]'];
+    try {
+        var doc = window.parent.document;
+    } catch(e) {
+        console.log('Cannot access parent DOM:', e);
+        return;
+    }
+
+    // --- Ẩn toolbar Streamlit Cloud ---
+    var SELECTORS = [
+        '[data-testid="stStatusWidget"]',
+        '[data-testid="stAppDeployButton"]',
+        '[data-testid="stManageAppButton"]',
+        '[data-testid="stToolbar"]',
+        '[data-testid="stHeader"]',
+        '[class*="viewerBadge"]',
+        '[class*="ManageApp"]'
+    ];
 
     function killToolbar() {
-        S.forEach(function(s) {
-            document.querySelectorAll(s).forEach(function(el) { el.remove(); });
-        });
-        document.querySelectorAll('iframe').forEach(function(f) {
-            const r = f.getBoundingClientRect();
-            if (r.bottom > window.innerHeight - 100
-                && r.right > window.innerWidth - 300) f.remove();
-        });
-    }
-
-    // ============================================
-    // 2. Cho phép click toàn bộ thẻ card
-    // ============================================
-    function makeCardsClickable() {
-        const map = {
-            'zone_kttv':     'Khí tượng',
-            'zone_thuyvan':  'Thủy văn',
-            'zone_mangluoi': 'Mạng lưới'
-        };
-
-        Object.keys(map).forEach(function(containerKey) {
-            const container = document.querySelector('.st-key-' + containerKey);
-            if (!container) return;
-
-            const btn = container.querySelector('button');
-            const card = container.querySelector('.zone-card');
-            if (!btn || !card) return;
-
-            // Gắn click handler nếu chưa có
-            if (!card.dataset.clickBound) {
-                card.style.cursor = 'pointer';
-                card.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    btn.click();
+        SELECTORS.forEach(function(s) {
+            try {
+                doc.querySelectorAll(s).forEach(function(el) {
+                    el.style.display = 'none';
                 });
-                card.dataset.clickBound = '1';
-            }
-
-            // Đảm bảo card nằm trên để nhận click
-            card.style.position = 'relative';
-            card.style.zIndex = '101';
-
-            // Ẩn nút đi (đã bị che bởi card)
-            const btnWrapper = btn.closest('.stButton');
-            if (btnWrapper) {
-                btnWrapper.style.position = 'absolute';
-                btnWrapper.style.top = '0';
-                btnWrapper.style.left = '0';
-                btnWrapper.style.width = '100%';
-                btnWrapper.style.height = '100%';
-                btnWrapper.style.opacity = '0';
-                btnWrapper.style.pointerEvents = 'none';
-                btnWrapper.style.zIndex = '100';
-            }
+            } catch(e) {}
         });
     }
 
-    // Chạy nhiều lần để bắt DOM thay đổi
-    function runAll() {
-        killToolbar();
-        makeCardsClickable();
+    // --- Force sticky cho kttv_top + kttv_submenu ---
+    function forceSticky() {
+        try {
+            var top = doc.querySelector('.st-key-kttv_top');
+            var sub = doc.querySelector('.st-key-kttv_submenu');
+
+            if (top) {
+                top.style.position = 'sticky';
+                top.style.top = '0';
+                top.style.zIndex = '1000';
+                top.style.background = '#eaf4fb';
+                top.style.padding = '12px 0 8px 0';
+                top.style.borderBottom = '1px solid rgba(74,159,224,0.15)';
+            }
+
+            if (sub) {
+                sub.style.position = 'sticky';
+                sub.style.top = '68px';
+                sub.style.zIndex = '999';
+                sub.style.background = '#eaf4fb';
+                sub.style.padding = '8px 0 12px 0';
+                sub.style.borderBottom = '2px solid rgba(74,159,224,0.28)';
+            }
+        } catch(e) {}
     }
 
-    runAll();
+    function run() {
+        killToolbar();
+        forceSticky();
+    }
+
+    run();
     [300, 800, 1500, 3000, 5000].forEach(function(t) {
-        setTimeout(runAll, t);
+        setTimeout(run, t);
     });
 
-    // Theo dõi DOM thay đổi
-    new MutationObserver(function() {
-        killToolbar();
-        makeCardsClickable();
-    }).observe(document.body, {childList: true, subtree: true});
+    try {
+        new MutationObserver(function() {
+            killToolbar();
+            forceSticky();
+        }).observe(doc.body, {childList: true, subtree: true});
+    } catch(e) {}
 })();
 </script>
 """, height=0, width=0)
@@ -509,8 +415,21 @@ for k, v in _defaults.items():
         st.session_state[k] = v
 
 
+# ============================================================
+# ĐỌC QUERY PARAMS — Điều hướng qua <a href="?page=...">
+# ============================================================
+try:
+    qp_page = st.query_params.get("page", None)
+    qp_tab = st.query_params.get("tab", None)
+    if qp_page:
+        st.session_state["page"] = qp_page
+    if qp_tab:
+        st.session_state["kttv_tab"] = qp_tab
+except Exception as e:
+    print(f"[QP] {e}")
+
+
 def filter_ensemble_from_run(ens_dict: dict) -> dict:
-    """Lọc ensemble từ model run time — an toàn."""
     out = {}
     for mk, df in ens_dict.items():
         if df is None or df.empty:
@@ -556,10 +475,14 @@ except Exception as e:
 
 
 def navigate(page: str, tab: str = None):
-    """Chuyển trang."""
+    """Chuyển trang bằng session_state + clear query params."""
     st.session_state["page"] = page
     if tab:
         st.session_state["kttv_tab"] = tab
+    try:
+        st.query_params.clear()
+    except Exception:
+        pass
     st.rerun()
 
 
@@ -578,74 +501,71 @@ def render_home():
 
     c1, c2, c3 = st.columns(3, gap="large")
 
-    # ---------- KHÍ TƯỢNG ----------
     with c1:
-        with st.container(key="zone_kttv"):
-            st.markdown("""
-<div class="zone-card zone-kttv">
-    <div class="zone-icon">🌦️</div>
-    <div class="zone-title">Dự báo Khí tượng</div>
-    <div class="zone-desc">
-        Dự báo số trị đa mô hình · Bản tin hàng ngày ·
-        Cảnh báo mưa dông · Mưa lớn
+        st.markdown("""
+<a href="?page=kttv&tab=forecast" target="_self" class="zone-card-link">
+    <div class="zone-card zone-kttv">
+        <div class="zone-icon">🌦️</div>
+        <div class="zone-title">Dự báo Khí tượng</div>
+        <div class="zone-desc">
+            Dự báo số trị đa mô hình · Bản tin hàng ngày ·
+            Cảnh báo mưa dông · Mưa lớn
+        </div>
     </div>
-</div>
+</a>
 """, unsafe_allow_html=True)
-            if st.button("Khí tượng", key="btn_go_kttv", width='stretch'):
-                navigate("kttv", "forecast")
 
-    # ---------- THỦY VĂN ----------
     with c2:
-        with st.container(key="zone_thuyvan"):
-            st.markdown("""
-<div class="zone-card zone-thuyvan">
-    <div class="zone-icon">🌊</div>
-    <div class="zone-title">Dự báo Thủy văn</div>
-    <div class="zone-desc">
-        Mực nước sông · Cảnh báo ngập lụt ·
-        Triều cường · Dự báo nguồn nước
+        st.markdown("""
+<a href="?page=thuyvan" target="_self" class="zone-card-link">
+    <div class="zone-card zone-thuyvan">
+        <div class="zone-icon">🌊</div>
+        <div class="zone-title">Dự báo Thủy văn</div>
+        <div class="zone-desc">
+            Mực nước sông · Cảnh báo ngập lụt ·
+            Triều cường · Dự báo nguồn nước
+        </div>
     </div>
-</div>
+</a>
 """, unsafe_allow_html=True)
-            if st.button("Thủy văn", key="btn_go_tv", width='stretch'):
-                navigate("thuyvan")
 
-    # ---------- MẠNG LƯỚI ----------
     with c3:
-        with st.container(key="zone_mangluoi"):
-            st.markdown("""
-<div class="zone-card zone-mangluoi">
-    <div class="zone-icon">🗺️</div>
-    <div class="zone-title">Mạng lưới & Dữ liệu</div>
-    <div class="zone-desc">
-        Bản đồ trạm KTTV · Dữ liệu quan trắc ·
-        Lịch sử khí tượng thủy văn
+        st.markdown("""
+<a href="?page=network" target="_self" class="zone-card-link">
+    <div class="zone-card zone-mangluoi">
+        <div class="zone-icon">🗺️</div>
+        <div class="zone-title">Mạng lưới & Dữ liệu</div>
+        <div class="zone-desc">
+            Bản đồ trạm KTTV · Dữ liệu quan trắc ·
+            Lịch sử khí tượng thủy văn
+        </div>
     </div>
-</div>
+</a>
 """, unsafe_allow_html=True)
-            if st.button("Mạng lưới", key="btn_go_ml", width='stretch'):
-                navigate("network")
-                # ============================================================
-# TRANG KTTV — Layout: Nút trái + Tiêu đề phải (2 dòng sticky)
+        # ============================================================
+# TRANG KTTV — Dòng 1: nút trái + tiêu đề phải
 # ============================================================
 def render_kttv():
-    # ============================================
-    # STICKY DÒNG 1: Nút Trang chủ (trái) + Tiêu đề (phải)
-    # ============================================
+    # Dòng 1: Nút Trang chủ (trái) + Tiêu đề (phải)
     with st.container(key="kttv_top"):
         col_back, col_title = st.columns([1, 4], gap="medium")
 
-        # ----- Nút Trang chủ bên TRÁI -----
         with col_back:
-            if st.button("🏠 Trang chủ", key="btn_back_home",
-                         width='stretch'):
-                navigate("home")
+            st.markdown("""
+<a href="?page=home" target="_self"
+   style="display:block; padding:10px 16px; text-align:center;
+          background:#ffffff; border:1px solid #d0e4f0;
+          border-radius:10px; text-decoration:none;
+          color:#0e4a7b; font-weight:700; font-size:0.9rem;
+          box-shadow:0 2px 6px rgba(74,159,224,0.10);">
+    🏠 Trang chủ
+</a>
+""", unsafe_allow_html=True)
 
-        # ----- Tiêu đề bên PHẢI -----
         with col_title:
             st.markdown("""
-<div style='display:flex; align-items:center; height:44px;
-            padding-left:12px;'>
+<div style='display:flex; align-items:center; padding-left:12px;
+            height:42px;'>
     <span style='font-size:1.5rem; margin-right:10px;'>🌦️</span>
     <span style='font-size:1.35rem; font-weight:800;
                  color:#0e4a7b; letter-spacing:0.5px;'>
@@ -654,30 +574,35 @@ def render_kttv():
 </div>
 """, unsafe_allow_html=True)
 
-    # ============================================
-    # STICKY DÒNG 2: Submenu
-    # ============================================
+    # Dòng 2: Submenu (4 tab)
     with st.container(key="kttv_submenu"):
-        submenu = [
+        active_tab = st.session_state.get("kttv_tab", "forecast")
+        tabs = [
             ("forecast",   "📊 Dự báo số trị"),
             ("daily",      "📰 Bản tin hàng ngày"),
             ("rain_storm", "⛈️ Bản tin mưa dông"),
             ("heavy_rain", "🌧️ Bản tin mưa lớn"),
         ]
 
-        cols = st.columns(len(submenu))
-        for i, (key, label) in enumerate(submenu):
+        cols = st.columns(4)
+        for i, (key, label) in enumerate(tabs):
             with cols[i]:
-                is_active = st.session_state.get("kttv_tab") == key
-                btn_type = "primary" if is_active else "secondary"
-                if st.button(label, key=f"kttv_tab_{key}",
-                             width='stretch', type=btn_type):
-                    st.session_state["kttv_tab"] = key
-                    st.rerun()
+                is_active = (key == active_tab)
+                bg = "#ff4b4b" if is_active else "#ffffff"
+                color = "#ffffff" if is_active else "#0e4a7b"
+                border = "#ff4b4b" if is_active else "#d0e4f0"
+                st.markdown(f"""
+<a href="?page=kttv&tab={key}" target="_self"
+   style="display:block; padding:12px 8px; text-align:center;
+          background:{bg}; color:{color}; border:2px solid {border};
+          border-radius:10px; text-decoration:none;
+          font-weight:700; font-size:0.85rem;
+          box-shadow:0 2px 6px rgba(74,159,224,0.08);">
+    {label}
+</a>
+""", unsafe_allow_html=True)
 
-    # ============================================
-    # NỘI DUNG PHÍA DƯỚI
-    # ============================================
+    # Nội dung theo tab
     tab = st.session_state.get("kttv_tab", "forecast")
 
     if tab == "forecast":
@@ -687,7 +612,7 @@ def render_kttv():
 
 
 # ============================================================
-# TRANG BẢN TIN — LIST DỌC + PDF VIEWER
+# TRANG BẢN TIN
 # ============================================================
 def render_bulletins_page(category: str):
     cat_info = BULLETIN_CATEGORIES.get(category, {})
@@ -720,7 +645,6 @@ def render_bulletins_page(category: str):
         created = (b.get("created_at") or "")[:16].replace("T", " ")
 
         col_info, col_btn = st.columns([5, 1])
-
         with col_info:
             st.markdown(
                 f"<div class='bulletin-item'>"
@@ -751,7 +675,6 @@ def render_bulletins_page(category: str):
             else:
                 try:
                     pdf_bytes = base64.b64decode(bulletin["file_data"])
-
                     st.download_button(
                         "📥 Tải bản tin (PDF)",
                         data=pdf_bytes,
@@ -759,14 +682,13 @@ def render_bulletins_page(category: str):
                         mime="application/pdf",
                         width='stretch',
                         key=f"dl_bul_{bid}")
-
                     pdf_b64 = base64.b64encode(pdf_bytes).decode("ascii")
-                    pdf_html = (
+                    st.markdown(
                         f'<iframe src="data:application/pdf;base64,'
                         f'{pdf_b64}" width="100%" height="800px" '
                         'style="border:1px solid #d0e4f0; '
-                        'border-radius:10px;"></iframe>')
-                    st.markdown(pdf_html, unsafe_allow_html=True)
+                        'border-radius:10px;"></iframe>',
+                        unsafe_allow_html=True)
                 except Exception as e:
                     st.error(f"Lỗi hiển thị PDF: {e}")
 
@@ -783,9 +705,15 @@ def render_placeholder(title: str, icon: str, message: str):
 
     cback, _ = st.columns([1, 5])
     with cback:
-        if st.button("🏠 Trang chủ", key=f"back_{title}",
-                     width='stretch'):
-            navigate("home")
+        st.markdown("""
+<a href="?page=home" target="_self"
+   style="display:block; padding:10px 16px; text-align:center;
+          background:#ffffff; border:1px solid #d0e4f0;
+          border-radius:10px; text-decoration:none;
+          color:#0e4a7b; font-weight:700; font-size:0.9rem;">
+    🏠 Trang chủ
+</a>
+""", unsafe_allow_html=True)
 
     st.info(f"🚧 {message}")
     st.markdown("""
@@ -998,9 +926,6 @@ def handle_forecast_run(input_mode, address, lat_input, lon_input,
         "📈 Biểu đồ dự báo", "📊 So sánh mô hình",
         "🕐 Theo giờ", "✅ Đánh giá QCVN", "💾 Lịch sử"])
 
-    # ================================================
-    # TAB 1: BIỂU ĐỒ
-    # ================================================
     with tab1:
         st.subheader("📈 Dự báo nhiệt độ và mưa")
 
@@ -1028,10 +953,8 @@ def handle_forecast_run(input_mode, address, lat_input, lon_input,
                 "<b style='font-size:15px; color:#0e4a7b;'>"
                 "🌡️ Nhiệt độ 2m (°C)</b>",
                 "<b style='font-size:15px; color:#0e4a7b;'>"
-                "💧 Mưa 1h (mm)</b>",
-            ),
-            vertical_spacing=0.20,
-        )
+                "💧 Mưa 1h (mm)</b>"),
+            vertical_spacing=0.20)
 
         for mk, ens_df in temp_ensembles.items():
             try:
@@ -1056,7 +979,7 @@ def handle_forecast_run(input_mode, address, lat_input, lon_input,
                     line=dict(color=color, width=2),
                     name=f"{label} (TB)"), row=1, col=1)
             except Exception as e:
-                print(f"[TEMP-PLOT] Bỏ qua {mk}: {e}")
+                print(f"[TEMP] {e}")
 
         if has_median and median_temp is not None and not median_temp.empty:
             try:
@@ -1094,7 +1017,7 @@ def handle_forecast_run(input_mode, address, lat_input, lon_input,
                         line=dict(color=color, width=2),
                         showlegend=False), row=2, col=1)
             except Exception as e:
-                print(f"[PRECIP-PLOT] Bỏ qua {mk}: {e}")
+                print(f"[PRECIP] {e}")
 
         if has_median and median_precip is not None and not median_precip.empty:
             try:
@@ -1119,14 +1042,12 @@ def handle_forecast_run(input_mode, address, lat_input, lon_input,
         fig.update_layout(
             height=820, hovermode="x unified",
             barmode="group", bargap=0.15, bargroupgap=0.05,
-            legend=dict(
-                orientation="h", yanchor="bottom", y=1.15,
-                xanchor="center", x=0.5,
-                bgcolor="rgba(255,255,255,0.92)",
-                bordercolor="#d0e4f0", borderwidth=1,
-                font=dict(size=11)),
-            margin=dict(l=50, r=30, t=150, b=50),
-        )
+            legend=dict(orientation="h", yanchor="bottom", y=1.15,
+                        xanchor="center", x=0.5,
+                        bgcolor="rgba(255,255,255,0.92)",
+                        bordercolor="#d0e4f0", borderwidth=1,
+                        font=dict(size=11)),
+            margin=dict(l=50, r=30, t=150, b=50))
         for ann in fig.layout.annotations:
             if ann.text and ("Nhiệt độ" in ann.text or "Mưa 1h" in ann.text):
                 ann.update(yshift=15, font=dict(size=15))
@@ -1136,9 +1057,7 @@ def handle_forecast_run(input_mode, address, lat_input, lon_input,
         if has_median:
             st.success(
                 f"🌟 **Tổ hợp trung vị (Median Ensemble)** từ "
-                f"{len(temp_ensembles)} mô hình chính — đường đen nét đứt. "
-                f"Đây là giá trị trung vị của **tất cả thành viên** từ các "
-                f"mô hình, đáng tin cậy hơn từng mô hình riêng lẻ.")
+                f"{len(temp_ensembles)} mô hình chính — đường đen nét đứt.")
 
         st.subheader(f"📌 Tóm tắt dự báo {days} ngày tới")
         c1, c2, c3, c4 = st.columns(4)
@@ -1175,9 +1094,6 @@ def handle_forecast_run(input_mode, address, lat_input, lon_input,
             if r_pk:
                 c4.metric("☔ Đỉnh mưa 1h", f"{max(r_pk):.1f} mm")
 
-    # ================================================
-    # TAB 2: SO SÁNH
-    # ================================================
     with tab2:
         cv = st.radio("Chọn biến:", ["🌡️ Nhiệt độ", "💧 Lượng mưa"],
                       horizontal=True, key="compare_var_radio",
@@ -1207,9 +1123,6 @@ def handle_forecast_run(input_mode, address, lat_input, lon_input,
                 legend=dict(orientation="h", y=1.02))
             st.plotly_chart(fig_cmp, width='stretch')
 
-    # ================================================
-    # TAB 3: THEO GIỜ
-    # ================================================
     with tab3:
         st.subheader("🕐 Chi tiết theo giờ")
         if not temp_ensembles and not precip_ensembles:
@@ -1239,17 +1152,13 @@ def handle_forecast_run(input_mode, address, lat_input, lon_input,
             tdf = temp_ensembles.get(selected)
             pdf = precip_ensembles.get(selected)
 
-            # ---- Ép kiểu số an toàn ----
             if tdf is not None and not tdf.empty:
                 try:
                     _tdf_num = tdf.apply(pd.to_numeric, errors="coerce")
                     _tdf_num = _tdf_num.dropna(axis=1, how="all")
-                    if _tdf_num.empty:
-                        tmean = pd.Series(dtype=float)
-                    else:
-                        tmean = _tdf_num.mean(axis=1).astype(float)
-                except Exception as e:
-                    print(f"[HOURLY] Lỗi temp: {e}")
+                    tmean = (_tdf_num.mean(axis=1).astype(float)
+                             if not _tdf_num.empty else pd.Series(dtype=float))
+                except Exception:
                     tmean = pd.Series(dtype=float)
             else:
                 tmean = pd.Series(dtype=float)
@@ -1265,8 +1174,7 @@ def handle_forecast_run(input_mode, address, lat_input, lon_input,
                         pmean = _pdf_num.mean(axis=1).astype(float)
                         rprob = ((_pdf_num > 0.1).sum(axis=1)
                                  / _pdf_num.notna().sum(axis=1)).astype(float)
-                except Exception as e:
-                    print(f"[HOURLY] Lỗi precip: {e}")
+                except Exception:
                     pmean = pd.Series(0.0, index=tmean.index)
                     rprob = pd.Series(0.0, index=tmean.index)
             else:
@@ -1277,20 +1185,17 @@ def handle_forecast_run(input_mode, address, lat_input, lon_input,
                 "time": tmean.index,
                 "temp": pd.to_numeric(tmean.values, errors="coerce"),
                 "rain": pd.to_numeric(pmean.values, errors="coerce"),
-                "rain_prob": pd.to_numeric(rprob.values, errors="coerce"),
-            })
-
+                "rain_prob": pd.to_numeric(rprob.values, errors="coerce")})
             df["rain"] = df["rain"].fillna(0.0)
             df["rain_prob"] = df["rain_prob"].fillna(0.0)
             df["temp"] = df["temp"].astype(float)
             df["rain"] = df["rain"].astype(float)
             df["rain_prob"] = df["rain_prob"].astype(float)
-
             df = df[df["time"] >= start].sort_values("time").reset_index(drop=True)
             df = df.dropna(subset=["temp"]).reset_index(drop=True)
 
             if df.empty:
-                st.warning("Không có dữ liệu trong khoảng thời gian.")
+                st.warning("Không có dữ liệu.")
             else:
                 df["phenomenon"] = df.apply(
                     lambda r: classify_weather_phenomenon(
@@ -1303,20 +1208,15 @@ def handle_forecast_run(input_mode, address, lat_input, lon_input,
                     "Nhiệt độ (°C)": df["temp"].round(1).values,
                     "Mưa 1h (mm)": df["rain"].round(2).values,
                     "Xác suất mưa (%)": (df["rain_prob"] * 100)
-                        .round(0).astype(int).values,
-                })
+                        .round(0).astype(int).values})
 
-                st.caption(f"📊 {len(disp)} giờ — từ "
-                           f"**{df['time'].min().strftime('%d/%m %H:%M')}** "
-                           f"đến **{df['time'].max().strftime('%d/%m %H:%M')}**")
-
+                st.caption(f"📊 {len(disp)} giờ")
                 render_df = pd.DataFrame({
                     "time_str": df["time_str"].values,
                     "phenomenon": df["phenomenon"].values,
                     "temp": df["temp"].round(1).values,
                     "rain": df["rain"].round(2).values,
-                    "rain_prob_pct": (df["rain_prob"] * 100).round(0).values,
-                })
+                    "rain_prob_pct": (df["rain_prob"] * 100).round(0).values})
                 _render_hourly_table(render_df)
 
                 csv_buf = io.StringIO()
@@ -1327,9 +1227,6 @@ def handle_forecast_run(input_mode, address, lat_input, lon_input,
                     file_name=f"du_bao_{selected}.csv",
                     mime="text/csv", key="dl_hourly")
 
-    # ================================================
-    # TAB 4: QCVN
-    # ================================================
     with tab4:
         st.subheader("✅ Đánh giá QCVN 84:2024/BTNMT")
         if not enable_qcvn:
@@ -1343,13 +1240,11 @@ def handle_forecast_run(input_mode, address, lat_input, lon_input,
                                          parse_dates=["time"]).set_index("time")
                     obs_temp = obs_precip = None
                     if "temperature" in obs_df.columns:
-                        obs_temp = obs_df.assign(
-                            observed=obs_df["temperature"])
+                        obs_temp = obs_df.assign(observed=obs_df["temperature"])
                     elif "observed" in obs_df.columns:
                         obs_temp = obs_df
                     if "precipitation" in obs_df.columns:
-                        obs_precip = obs_df.assign(
-                            observed=obs_df["precipitation"])
+                        obs_precip = obs_df.assign(observed=obs_df["precipitation"])
                     elif "observed" in obs_df.columns and obs_temp is None:
                         obs_precip = obs_df
 
@@ -1383,16 +1278,12 @@ def handle_forecast_run(input_mode, address, lat_input, lon_input,
                                 pass
                     if all_eval:
                         st.dataframe(pd.DataFrame(all_eval),
-                                     width='stretch',
-                                     hide_index=True)
+                                     width='stretch', hide_index=True)
                     else:
                         st.warning("Không đủ dữ liệu.")
                 except Exception as e:
                     st.error(f"Lỗi: {e}")
 
-    # ================================================
-    # TAB 5: LỊCH SỬ
-    # ================================================
     with tab5:
         st.subheader("💾 Lịch sử đánh giá")
         try:
@@ -1416,20 +1307,44 @@ if page == "kttv" and st.session_state.get("kttv_tab") == "forecast":
 elif page == "kttv":
     with st.sidebar:
         st.markdown("### 📂 Danh mục KTTV")
-        if st.button("📊 Dự báo số trị", width='stretch',
-                     key="sb_go_forecast"):
-            st.session_state["kttv_tab"] = "forecast"
-            st.rerun()
-        for cat_key, cat_info in BULLETIN_CATEGORIES.items():
-            if cat_key == "hydro":
-                continue
-            if st.button(f"{cat_info['icon']} {cat_info['label']}",
-                         width='stretch', key=f"sb_{cat_key}"):
-                st.session_state["kttv_tab"] = cat_key
-                st.rerun()
-        st.divider()
-        if st.button("🏠 Trang chủ", width='stretch', key="sb_home"):
-            navigate("home")
+        st.markdown("""
+<a href="?page=kttv&tab=forecast" target="_self"
+   style="display:block; padding:10px; margin-bottom:6px;
+          background:#ffffff; border:1px solid #d0e4f0;
+          border-radius:8px; text-decoration:none;
+          color:#0e4a7b; font-weight:600; font-size:0.85rem;">
+    📊 Dự báo số trị
+</a>
+<a href="?page=kttv&tab=daily" target="_self"
+   style="display:block; padding:10px; margin-bottom:6px;
+          background:#ffffff; border:1px solid #d0e4f0;
+          border-radius:8px; text-decoration:none;
+          color:#0e4a7b; font-weight:600; font-size:0.85rem;">
+    📰 Bản tin hàng ngày
+</a>
+<a href="?page=kttv&tab=rain_storm" target="_self"
+   style="display:block; padding:10px; margin-bottom:6px;
+          background:#ffffff; border:1px solid #d0e4f0;
+          border-radius:8px; text-decoration:none;
+          color:#0e4a7b; font-weight:600; font-size:0.85rem;">
+    ⛈️ Bản tin mưa dông
+</a>
+<a href="?page=kttv&tab=heavy_rain" target="_self"
+   style="display:block; padding:10px; margin-bottom:6px;
+          background:#ffffff; border:1px solid #d0e4f0;
+          border-radius:8px; text-decoration:none;
+          color:#0e4a7b; font-weight:600; font-size:0.85rem;">
+    🌧️ Bản tin mưa lớn
+</a>
+<a href="?page=home" target="_self"
+   style="display:block; padding:10px; margin-top:12px;
+          background:#e3f2fd; border:1px solid #4a9fe0;
+          border-radius:8px; text-decoration:none;
+          color:#0e4a7b; font-weight:700; font-size:0.85rem;
+          text-align:center;">
+    🏠 Trang chủ
+</a>
+""", unsafe_allow_html=True)
 
 
 if (st.session_state.get("show_admin")
